@@ -1,0 +1,64 @@
+{
+  "active_engine": "piper",
+  "piper": {
+    "enabled": true,
+    "binary_path": "piper/piper",
+    "selected_voice": "en_US-hfc_female-medium",
+    "available_voices": [
+      {
+        "id": "en_US-hfc_female-medium",
+        "name": "Niramyan Soft Anime (HFC Female)",
+        "tone": "Youthful, soft, clear, anime companion",
+        "model_file": "voices/en_US-hfc_female-medium.onnx",
+        "config_file": "voices/en_US-hfc_female-medium.onnx.json",
+        "sample_rate": 22050
+      },
+      {
+        "id": "en_US-amy-medium",
+        "name": "Niramyan Siri-Style (Amy)",
+        "tone": "Warm, smooth, natural, Siri-like clarity",
+        "model_file": "voices/en_US-amy-medium.onnx",
+        "config_file": "voices/en_US-amy-medium.onnx.json",
+        "sample_rate": 22050
+      }
+    ],
+    "length_scale": 1.1111111111111112,
+    "noise_scale": 0.667,
+    "noise_w": 0.8,
+    "sentence_silence": 0.22
+  },
+  "web_speech": {
+    "enabled": true,
+    "preferred_voices": [
+      "Google UK English Female",
+      "Google US English",
+      "Samantha",
+      "Victoria",
+      "Karen",
+      "Moira",
+      "Aria",
+      "Jenny"
+    ],
+    "pitch": 1.28,
+    "rate": 0.9,
+    "volume": 1.0
+  },
+  "pronunciations": {
+    "Niramyan": "Nee-rahm-yahn",
+    "Kali": "Kah-lee",
+    "Wireshark": "Wire shark",
+    "SQLi": "Sequel eye",
+    "Metasploit": "Meta sploit",
+    "XSS": "Cross site scripting",
+    "OWASP": "Oh-wasp",
+    "Burp Suite": "Burp Sweet",
+    "nmap": "N-map"
+  },
+  "animation": {
+    "viseme_fps": 50,
+    "blink_min_interval_sec": 2.8,
+    "blink_max_interval_sec": 5.5,
+    "blink_duration_ms": 130,
+    "sound_fx_enabled": true
+  }
+}
