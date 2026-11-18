@@ -1,0 +1,1540 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Niramyan-AI · 3D Anime Assistant & Cyber Mentor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  
+  <style>
+    /* Fullscreen HD Background & Layout */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-image: url('/static/images/bg.jpg');
+      background-size: cover;
+      background-position: center center;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    #scene-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2; /* In front of atmospheric background overlay for HD clarity */
+      pointer-events: auto;
+    }
+
+    /* Subtle atmospheric vignette placed behind the 3D character */
+    .sakura-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1; /* Behind 3D canvas so it never hazes or washes out the character */
+      background: radial-gradient(circle at 35% 40%, rgba(255, 182, 193, 0.08), rgba(15, 7, 24, 0.35) 85%);
+    }
+
+    /* Main UI Grid Overlay */
+    .app-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: 1fr 440px;
+      padding: 20px;
+      gap: 20px;
+      pointer-events: none;
+    }
+
+    /* Left: 3D Character View & Controls (Clickable elements have pointer-events: auto) */
+    .viewport-ui {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .top-left-bar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(13, 21, 39, 0.72);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      padding: 10px 18px;
+      border-radius: 20px;
+      width: fit-content;
+      pointer-events: auto;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    .top-left-bar .logo {
+      width: 36px;
+      height: 36px;
+      font-size: 18px;
+    }
+
+    .top-left-bar h1 {
+      font-size: 16px;
+      margin: 0;
+      color: #fff;
+    }
+
+    .bottom-left-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: fit-content;
+      pointer-events: auto;
+    }
+
+    .character-status-card {
+      background: rgba(13, 21, 39, 0.75);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 18px;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    .character-status-card b {
+      color: #fff;
+      font-size: 15px;
+    }
+
+    .character-status-card small {
+      color: #ffb8d1;
+      font-size: 11px;
+    }
+
+    /* Floating Faces & Eye Expression Bar (VRoid Studio Style) */
+    .expression-quick-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      background: rgba(13, 21, 39, 0.78);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 16px;
+      padding: 8px 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      width: fit-content;
+      max-width: 410px;
+    }
+
+    .expr-pill-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 184, 209, 0.25);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 11px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .expr-pill-btn:hover {
+      background: rgba(255, 105, 180, 0.25);
+      border-color: #ff7ebb;
+      transform: translateY(-1px);
+    }
+
+    .expr-pill-btn.active {
+      background: linear-gradient(135deg, #ff6ea6, #e03274);
+      border-color: #ffb8d1;
+      box-shadow: 0 2px 10px rgba(255, 110, 166, 0.45);
+    }
+
+    /* Right: Full Chat Panel (Elegant Glassmorphism over SakuraBg) */
+    .chat-container {
+      pointer-events: auto;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: rgba(12, 18, 34, 0.42); /* Translucent glassmorphism */
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 24px;
+      padding: 20px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+      transition: background 0.3s ease;
+    }
+
+    .chat-container:hover {
+      background: rgba(12, 18, 34, 0.48);
+    }
+
+    .chat-container .chat-title h2 {
+      font-size: 18px;
+    }
+
+    .chat-container .messages {
+      flex: 1;
+      max-height: none;
+      min-height: 0;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 184, 209, 0.28) transparent;
+    }
+
+    .chat-container .messages::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .chat-container .messages::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .chat-container .messages::-webkit-scrollbar-thumb {
+      background: rgba(255, 184, 209, 0.28);
+      border-radius: 6px;
+    }
+
+    .chat-container .topic-suggestions {
+      scrollbar-width: none; /* Hide unsightly horizontal scrollbar */
+      -ms-overflow-style: none;
+    }
+
+    .chat-container .topic-suggestions::-webkit-scrollbar {
+      display: none;
+    }
+
+    .chat-container .msg.user p {
+      background: linear-gradient(135deg, rgba(38, 58, 105, 0.68), rgba(22, 36, 68, 0.74));
+      border: 1px solid rgba(110, 162, 255, 0.22);
+      backdrop-filter: blur(8px);
+    }
+
+    .chat-container .msg p {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(8px);
+    }
+
+    .chat-container #form {
+      background: rgba(10, 16, 30, 0.52);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    /* Hidden avatar sprite layers so app.js doesn't throw errors */
+    .hidden-avatar-stage {
+      display: none !important;
+    }
+
+    /* Model Loading Indicator */
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, #1f0b24 0%, #08030a 100%);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #ffb8d1;
+      font-family: inherit;
+      transition: opacity 0.6s ease, visibility 0.6s ease;
+    }
+
+    #loading-screen.fade-out {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(255, 184, 209, 0.2);
+      border-top-color: #ff7ebb;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 900px) {
+      .app-overlay {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+      .chat-container {
+        height: 55vh;
+      }
+    }
+  </style>
+
+  <!-- Import maps for Three.js, Three-VRM & Three-VRM-Animation -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+        "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js",
+        "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@3/lib/three-vrm-animation.module.min.js"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <h3>Loading 3D Anime Assistant & Cherry Blossom Garden...</h3>
+    <small style="opacity: 0.7;">Rendering WebGL Shaders & VRM Rigging</small>
+  </div>
+
+  <!-- Fullscreen 3D Scene Canvas Container -->
+  <div id="scene-container"></div>
+  <div class="sakura-overlay"></div>
+
+  <!-- Hidden Stage for app.js Compatibility -->
+  <div class="hidden-avatar-stage" id="stage" data-mood="idle">
+    <div class="avatar-wrap" id="avatarWrap">
+      <img id="img-idle" src="/static/avatar.png" class="avatar-layer active" alt="Idle">
+      <img id="img-smile" src="/static/avatar_smile.png" class="avatar-layer" alt="Smile">
+      <img id="img-laugh" src="/static/avatar_laugh.png" class="avatar-layer" alt="Laugh">
+      <img id="img-talk" src="/static/avatar_talk.png" class="avatar-layer" alt="Talk">
+      <img id="img-think" src="/static/avatar_think.png" class="avatar-layer" alt="Think">
+      <img id="img-blink" src="/static/avatar_blink.png" class="avatar-layer" alt="Blink">
+    </div>
+    <div class="bars" id="voiceBars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="avatar-bubble" id="avatarBubble">Ready!</div>
+    <div class="cyber-hud" id="cyberHud"></div>
+    <div class="particles" id="particles"></div>
+  </div>
+
+  <!-- Floating UI Overlay -->
+  <div class="app-overlay">
+    
+    <!-- Left Side: Header & Interactive Controls -->
+    <div class="viewport-ui">
+      <!-- Top Left: App Title & Model Info -->
+      <div class="top-left-bar">
+        <div class="logo">N</div>
+        <div>
+          <h1>Niramyan-AI <span class="assistant-badge">3D AVATAR</span></h1>
+          <small style="color: #ffb8d1; font-size: 10px;">LOCAL CYBER MENTOR & ENGLISH COACH</small>
+        </div>
+        <div class="model-select-wrapper" style="margin-left: 12px;">
+          <select id="modelSelect" title="Select Ollama model">
+            <option value="CURRENT_MODEL">CURRENT_MODEL</option>
+          </select>
+        </div>
+        <div id="status" class="status">Checking Ollama…</div>
+      </div>
+
+      <!-- Bottom Left: Floating Mic & Status -->
+      <div class="bottom-left-controls">
+        <div class="character-status-card">
+          <span class="green-dot" id="onlineDot"></span>
+          <div>
+            <b id="avatarDisplayName">Ramya (3D)</b>
+            <div id="moodText" style="font-size: 11px; color: #ffb8d1;">Ready when you are ✨</div>
+          </div>
+        </div>
+
+        <!-- Faces & Eye Expressions Toolbar (VRoid Studio Style) -->
+        <div class="expression-quick-bar">
+          <button type="button" class="expr-pill-btn active" data-expr="smile" onclick="window.setVRMExpression('smile');" title="Cute sweet smile with eyes open">😊 Sweet Smile</button>
+          <button type="button" class="expr-pill-btn" data-expr="neutral" onclick="window.setVRMExpression('neutral');" title="Default beautiful open eyes">✨ Open Eyes</button>
+          <button type="button" class="expr-pill-btn" data-expr="blush" onclick="window.setVRMExpression('blush');" title="Kawaii blush with sparkly eyes">🌸 Blush</button>
+          <button type="button" class="expr-pill-btn" data-expr="sparkle_eyes" onclick="window.setVRMExpression('sparkle_eyes');" title="Sparkle big eyes">💖 Sparkle</button>
+          <button type="button" class="expr-pill-btn" data-expr="wink" onclick="window.triggerCuteWink(650);" title="Cute single-eye wink">😉 Wink</button>
+        </div>
+
+        <!-- Mic & Voice Zone -->
+        <div class="mic-zone" style="margin-bottom: 0; background: rgba(13, 21, 39, 0.78); backdrop-filter: blur(14px);">
+          <div class="mic-ring" id="micRing">
+            <div class="mic-pulse"></div>
+            <button id="listen" class="mic-btn" title="Tap to mute/unmute">&#127897;</button>
+          </div>
+          <div class="mic-labels">
+            <span id="micLabel">Tap mic to speak</span>
+            <small id="voiceState">Voice: ready</small>
+          </div>
+          <button class="settings-btn" id="voiceSettingsBtn" title="Voice & Avatar Settings">&#9881;&#65039;</button>
+          <button class="stop" id="stop" title="Stop speaking">&#9646;</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Side: The Chat Panel (Replaced the Face Box!) -->
+    <div class="chat-container">
+      
+      <!-- Top: Focus Modes -->
+      <div class="learning-modes" style="margin-bottom: 8px;">
+        <small class="modes-label" style="color: #ffb8d1;">ASSISTANT FOCUS:</small>
+        <div class="mode-chips">
+          <button type="button" class="mode-chip active" data-mode="girlfriend">💖 Girlfriend</button>
+          <button type="button" class="mode-chip" data-mode="cyber">🛡️ Cyber Security</button>
+          <button type="button" class="mode-chip" data-mode="english">🎓 English Coach</button>
+          <button type="button" class="mode-chip" data-mode="quiz">🎯 Quiz Me</button>
+        </div>
+      </div>
+
+      <!-- English Coach Toolbar (hidden until activated) -->
+      <div id="englishToolbar" class="english-toolbar" style="display:none; margin-bottom: 8px;">
+        <div class="ec-toolbar-row">
+          <label class="ec-label">Level:</label>
+          <select id="ecLevelSelect" class="ec-select">
+            <option value="beginner">🌱 Beginner</option>
+            <option value="intermediate" selected>📘 Intermediate</option>
+            <option value="advanced">🚀 Advanced</option>
+          </select>
+          <label class="ec-label">Scenario:</label>
+          <select id="ecScenarioSelect" class="ec-select">
+            <option value="free">💬 Free Chat</option>
+            <option value="job_interview">👔 Job Interview</option>
+            <option value="restaurant">🍽️ Restaurant</option>
+            <option value="shopping">🛍️ Shopping</option>
+            <option value="travel">✈️ Travel</option>
+            <option value="college">🎓 College Life</option>
+            <option value="friends">👫 With Friends</option>
+            <option value="self_intro">🙋 Self Intro</option>
+            <option value="workplace">💼 Workplace</option>
+          </select>
+          <button id="ecProgressBtn" class="ec-progress-btn">📊 Progress</button>
+        </div>
+      </div>
+
+      <!-- Chat Header -->
+      <div class="chat-title" style="margin-bottom: 8px;">
+        <div>
+          <small style="color: #ffb8d1;">CHAT & MENTORSHIP</small>
+          <h2>Conversation</h2>
+        </div>
+        <div class="chat-actions-top">
+          <button id="handsFreeBtn" class="handsfree-btn" title="Toggle hands-free continuous voice chat">🎧 Hands-Free: Off</button>
+          <button id="clear" class="clear" title="Clear chat history">↻</button>
+        </div>
+      </div>
+
+      <!-- Quick Topic Prompts -->
+      <div class="topic-suggestions" id="topicSuggestions">
+        <button type="button" class="topic-pill" data-prompt="Explain TCP 3-way handshake in 2 simple sentences!">🌐 TCP Handshake</button>
+        <button type="button" class="topic-pill" data-prompt="What is SQL Injection and how to prevent it?">💉 SQL Injection</button>
+        <button type="button" class="topic-pill" data-prompt="Teach me 3 essential Kali Linux terminal commands.">🐧 Kali Commands</button>
+        <button type="button" class="topic-pill" data-prompt="Quiz me on ethical hacking concepts!">🎯 Cyber Quiz</button>
+        <button type="button" class="topic-pill" data-prompt="Let's practice conversational English! Ask me a question.">💬 English Practice</button>
+        <button type="button" class="topic-pill" data-prompt="Open YouTube and play recent hit song">🎵 Play Music</button>
+      </div>
+
+      <!-- Chat Messages Scroll Area -->
+      <div class="messages" id="messages">
+        <div class="msg">
+          <div class="badge">N</div>
+          <div class="msg-body">
+            <small>Ramya · 3D AI Assistant</small>
+            <p>Konnichiwa! I'm Ramya, your 3D interactive AI assistant, cyber security mentor, and English coach. What shall we explore together today? 🌸✨</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Thinking Indicator -->
+      <div class="thinking hidden" id="thinking" hidden style="display:none;">
+        <div class="dot-pulse"></div>
+        <span>Ramya is thinking…</span>
+      </div>
+
+      <!-- Input Form -->
+      <form id="form" style="margin-top: 10px;">
+        <textarea id="input" rows="1" placeholder="Type a message or tap the mic…"></textarea>
+        <button id="send" type="submit" title="Send message">➤</button>
+      </form>
+
+      <div class="hint">
+        <span>Enter to send · Shift+Enter new line</span>
+        <span id="voiceStateHint">Voice: ready</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Voice & Avatar Settings Modal -->
+  <dialog id="settingsDialog" class="settings-dialog">
+    <div class="dialog-content">
+      <div class="dialog-header">
+        <h3>⚙️ Voice & 3D Avatar Settings</h3>
+        <button type="button" id="closeSettings" class="close-dialog">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="setting-item">
+          <label for="engineSelect"><b>TTS Engine:</b></label>
+          <select id="engineSelect">
+            <option value="piper">🌸 Neural Piper TTS (Studio Female Voice)</option>
+            <option value="webspeech">🌐 Browser Web Speech API</option>
+          </select>
+        </div>
+
+        <div class="setting-item" id="piperVoiceGroup">
+          <label for="piperVoiceSelect"><b>Neural Voice Model:</b></label>
+          <select id="piperVoiceSelect">
+            <option value="en_US-hfc_female-medium">🌸 Soft Anime (HFC Female)</option>
+            <option value="en_US-amy-medium">✨ Warm Natural (Amy)</option>
+          </select>
+        </div>
+
+        <div class="setting-item" id="webVoiceGroup" style="display:none;">
+          <label for="voiceSelect">Browser Voice:</label>
+          <select id="voiceSelect"></select>
+        </div>
+
+        <div class="setting-item">
+          <label for="voiceRate">Speaking Speed: <span id="rateVal">1.0x</span></label>
+          <input type="range" id="voiceRate" min="0.75" max="1.3" step="0.05" value="1.0">
+        </div>
+
+        <div class="setting-item" id="pitchGroup">
+          <label for="voicePitch">Vocal Pitch: <span id="pitchVal">1.28</span> 🎵</label>
+          <input type="range" id="voicePitch" min="0.8" max="1.8" step="0.04" value="1.28">
+        </div>
+
+        <div class="setting-item checkbox-item">
+          <label><input type="checkbox" id="autoBlinkToggle" checked> Natural eye blinking</label>
+        </div>
+        <div class="setting-item checkbox-item">
+          <label><input type="checkbox" id="soundFxToggle" checked> Chimes & audio effects</label>
+        </div>
+
+        <div class="setting-item contacts-section">
+          <label><b>📱 WhatsApp Contacts:</b></label>
+          <div class="contacts-list" id="contactsList"></div>
+          <div class="add-contact-row">
+            <input type="text" id="newContactName" placeholder="Name">
+            <input type="text" id="newContactPhone" placeholder="+91...">
+            <button type="button" id="addContactBtn" class="btn-secondary">+ Add</button>
+          </div>
+        </div>
+
+        <div class="setting-item" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; margin-top: 12px;">
+          <label><b>✨ Test 3D Body Actions & Romantic Poses:</b></label>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+            <button type="button" class="btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="window.playAnim('model_pose'); window.setVRMExpression('blush'); window.triggerCuteWink(600);">💖 Romantic Model Pose</button>
+            <button type="button" class="btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="window.playAnim('peace_sign'); window.setVRMExpression('blush'); window.triggerCuteWink(700);">✌️ Kawaii Peace Sign</button>
+            <button type="button" class="btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="window.playAnim('show_fullbody'); window.setVRMExpression('blush');">🌸 Cute Presentation</button>
+            <button type="button" class="btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="window.playAnim('greeting'); window.setVRMExpression('smile');">🙋 Wave & Greet</button>
+            <button type="button" class="btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="window.playAnim('spin'); window.setVRMExpression('sparkle_eyes');">💫 360 Spin</button>
+            <button type="button" class="btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="window.playAnim('finger_gun_pose'); window.setVRMExpression('cyber');">🔫 Finger Gun</button>
+            <button type="button" class="btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="window.playAnim('squat'); window.setVRMExpression('sparkle_eyes');">🎀 Cute Squat</button>
+            <button type="button" class="btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="window.triggerCuteWink(600)">😉 Cute Wink</button>
+            <button type="button" class="btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="if(window.mixer)window.mixer.stopAllAction(); window.isAnimating=false; window.restPose(); window.setVRMExpression('neutral');">🔄 Reset Idle (Open Eyes)</button>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" id="testVoiceBtn" class="btn-secondary">🔊 Test Voice</button>
+        <button type="button" id="saveSettingsBtn" class="btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 3D Three.js + Three-VRM Engine Script -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+    import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
+
+    let scene, camera, renderer, controls;
+    let currentVrm = null;
+    let faceMesh = null;
+    let mixer = null;
+    let isAnimating = false;
+    let clock = new THREE.Clock();
+    let sakuraParticles = null;
+    let loader = null;
+
+    // Mouse tracking for realistic cursor gaze
+    const mouse = { x: 0, y: 0 };
+    let lookTargetX = 0, lookTargetY = 0;
+    window.addEventListener('pointermove', (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    // Emotion target and current states for smooth expression transitions
+    const FACES = ['happy', 'angry', 'sad', 'relaxed', 'surprised', 'blinkLeft', 'blinkRight'];
+    const currentEmotion = { happy: 0, angry: 0, sad: 0, relaxed: 0, surprised: 0, blinkLeft: 0, blinkRight: 0 };
+    let targetEmotion = {};
+    let isWinking = false;
+
+    window.triggerCuteWink = function(durationMs = 500) {
+      if (isWinking) return;
+      isWinking = true;
+      targetEmotion.blinkLeft = 1.0;
+      targetEmotion.happy = Math.max(0.65, targetEmotion.happy || 0.65);
+      setTimeout(() => {
+        targetEmotion.blinkLeft = 0;
+        isWinking = false;
+      }, durationMs);
+    };
+
+    const emotionMap = {
+      'neutral':             {},
+      'smile':               { happy: 0.85, relaxed: 0.25 },
+      'laugh':               { happy: 1.0, surprised: 0.35 },
+      'think':               { relaxed: 0.75, happy: 0.25 },
+      'cyber':               { happy: 0.65, surprised: 0.4 },
+      'blush_or_sly_smile':  { happy: 0.75, relaxed: 0.4 },
+      'full_grin':           { happy: 1.0 },
+      'worried_shocked':     { sad: 1.0, surprised: 0.5 },
+      'sad':                 { sad: 1.0, angry: 0.2 },
+      'angry':               { angry: 1.0, happy: 0.2 },
+      'annoyed_or_frustrated':{ angry: 0.8, sad: 0.5 },
+      'small_smile':         { relaxed: 0.9, happy: 0.4 },
+      'excited':             { happy: 1.0, surprised: 0.7 }
+    };
+
+    const bone = (name) => currentVrm && currentVrm.humanoid ? currentVrm.humanoid.getNormalizedBoneNode(name) : null;
+
+    // -------------------------------------------------------------------------
+    // Professional 3D Motion Capture Animations (.VRMA)
+    // -------------------------------------------------------------------------
+    const actionMap = {
+      "greeting":        "/static/animations/greeting.vrma",
+      "peace_sign":      "/static/animations/peace_sign.vrma",
+      "spin":            "/static/animations/spin.vrma",
+      "finger_gun_pose": "/static/animations/finger_gun_pose.vrma",
+      "finger_gun":      "/static/animations/finger_gun_pose.vrma",
+      "model_pose":      "/static/animations/model_pose.vrma",
+      "show_fullbody":   "/static/animations/show_fullbody.vrma",
+      "squat":           "/static/animations/squat.vrma"
+    };
+
+    const loadedClips = {};
+
+    function getOrLoadClip(key, callback) {
+      const file = actionMap[key] || key;
+      if (loadedClips[file]) {
+        if (callback) callback(loadedClips[file]);
+        return;
+      }
+      loader.load(
+        file,
+        (gltf) => {
+          if (!gltf.userData.vrmAnimations || !gltf.userData.vrmAnimations[0]) {
+            console.warn('[VRM] No vrmAnimations found in', file);
+            return;
+          }
+          const clip = createVRMAnimationClip(gltf.userData.vrmAnimations[0], currentVrm);
+          loadedClips[file] = clip;
+          console.log('[VRM Animation] Loaded clip:', key);
+          if (callback) callback(clip);
+        },
+        undefined,
+        (err) => console.error('[VRM Animation] Error loading:', file, err)
+      );
+    }
+
+    function preloadAllAnimations() {
+      if (!currentVrm || !loader) return;
+      Object.keys(actionMap).forEach((k) => {
+        getOrLoadClip(k, () => {});
+      });
+    }
+
+    window.playAnim = function(animKey) {
+      if (!animKey || !currentVrm || !loader) return;
+
+      getOrLoadClip(animKey, (clip) => {
+        if (!mixer) {
+          mixer = new THREE.AnimationMixer(currentVrm.scene);
+          mixer.addEventListener("finished", () => {
+            mixer.stopAllAction();
+            isAnimating = false;
+            restPose();
+          });
+        }
+
+        mixer.stopAllAction();
+        const action = mixer.clipAction(clip);
+        action.setLoop(THREE.LoopOnce);
+        action.clampWhenFinished = false;
+        action.reset().play();
+        isAnimating = true;
+        console.log('[VRM Animation] Playing action:', animKey);
+      });
+    };
+
+    window.playAnimationClip = window.playAnim; // alias for compatibility
+
+    // Initialize 3D WebGL Scene
+    function init() {
+      const container = document.getElementById('scene-container');
+
+      // 1. Scene with Transparent Background so SakuraBg.jpg shows through
+      scene = new THREE.Scene();
+      scene.background = null;
+
+      // 2. Camera Setup (Portrait framing focusing on beautiful eyes, face, and dress)
+      camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 25);
+      camera.position.set(-0.35, 1.15, 2.15);
+
+      if (camera.aspect < 0.8) {
+        camera.position.z = 3.2;
+      } else {
+        camera.position.z = 2.15;
+      }
+      camera.updateProjectionMatrix();
+
+      // 3. Renderer with Alpha: true & High-Definition Color Accuracy
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance'
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = (THREE.NeutralToneMapping !== undefined) ? THREE.NeutralToneMapping : THREE.LinearToneMapping;
+      renderer.toneMappingExposure = 1.0;
+      container.appendChild(renderer.domElement);
+
+      // 4. Orbit Controls (Gentle damping, centered on character's chest/face)
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(-0.35, 1.02, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.maxPolarAngle = Math.PI / 2 + 0.1;
+      controls.minDistance = 1.0;
+      controls.maxDistance = 4.0;
+
+      // Interactive Character Tap Reaction (Clicking Ramya in the garden)
+      let tapStartTime = 0;
+      let tapStartX = 0, tapStartY = 0;
+      renderer.domElement.addEventListener('pointerdown', (e) => {
+        tapStartTime = performance.now();
+        tapStartX = e.clientX;
+        tapStartY = e.clientY;
+      });
+      renderer.domElement.addEventListener('pointerup', (e) => {
+        const dur = performance.now() - tapStartTime;
+        const dist = Math.hypot(e.clientX - tapStartX, e.clientY - tapStartY);
+        if (dur < 250 && dist < 10) {
+          if (e.clientX < window.innerWidth - 450) {
+            const reactions = ['model_pose', 'peace_sign', 'show_fullbody', 'greeting'];
+            const chosen = reactions[Math.floor(Math.random() * reactions.length)];
+            window.playAnim(chosen);
+            window.setVRMExpression('blush');
+            window.triggerCuteWink(650);
+          }
+        }
+      });
+
+      // 5. High-Definition Anime Lighting (Rich saturation, defined cel-shading, luminous hair rim)
+      const ambientLight = new THREE.AmbientLight(0xfff0f5, 0.48);
+      scene.add(ambientLight);
+
+      const mainLight = new THREE.DirectionalLight(0xffffff, Math.PI * 0.68);
+      mainLight.position.set(0.8, 1.8, 1.4).normalize();
+      scene.add(mainLight);
+
+      const fillLight = new THREE.DirectionalLight(0xffe6f0, 0.35);
+      fillLight.position.set(-1.0, 1.0, 1.0).normalize();
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0xe8eeff, 0.60);
+      rimLight.position.set(-1.2, 2.2, -1.2);
+      scene.add(rimLight);
+
+      // 6. Sakura Falling Petals Particle System
+      createSakuraPetals();
+
+      // 7. Load VRM Character Model
+      loadVRMModel('/static/models/model.vrm');
+
+      // 8. Window Resize Listener
+      window.addEventListener('resize', onWindowResize);
+
+      // 9. Start Animation Loop
+      animate();
+    }
+
+    // Create Falling Sakura Petals Particle Effect
+    function createSakuraPetals() {
+      const petalCount = 350;
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(petalCount * 3);
+      const speeds = new Float32Array(petalCount * 3);
+
+      for (let i = 0; i < petalCount; i++) {
+        positions[i * 3 + 0] = (Math.random() - 0.5) * 10;
+        positions[i * 3 + 1] = Math.random() * 6 - 1;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 8;
+
+        speeds[i * 3 + 0] = (Math.random() - 0.5) * 0.008;
+        speeds[i * 3 + 1] = -(Math.random() * 0.009 + 0.005);
+        speeds[i * 3 + 2] = (Math.random() - 0.5) * 0.008;
+      }
+
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+      // Pink Soft Circular Particle Texture
+      const canvas = document.createElement('canvas');
+      canvas.width = 32; canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grad.addColorStop(0, 'rgba(255, 192, 210, 0.95)');
+      grad.addColorStop(0.5, 'rgba(255, 150, 190, 0.7)');
+      grad.addColorStop(1, 'rgba(255, 105, 180, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(16, 16, 16, 0, Math.PI * 2); ctx.fill();
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const material = new THREE.PointsMaterial({
+        size: 0.10,
+        map: texture,
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+
+      sakuraParticles = new THREE.Points(geometry, material);
+      sakuraParticles.userData = { speeds };
+      scene.add(sakuraParticles);
+    }
+
+    // Load VRM Model using GLTFLoader + VRMLoaderPlugin + VRMAnimationLoaderPlugin
+    function loadVRMModel(url) {
+      loader = new GLTFLoader();
+      loader.register((parser) => new VRMLoaderPlugin(parser));
+      loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+
+      loader.load(
+        url,
+        (gltf) => {
+          const vrm = gltf.userData.vrm;
+          VRMUtils.removeUnnecessaryVertices(gltf.scene);
+          VRMUtils.combineSkeletons(gltf.scene);
+          VRMUtils.rotateVRM0(vrm);
+
+          currentVrm = vrm;
+          scene.add(vrm.scene);
+
+          // Enhance MToon materials and locate face mesh for expression control
+          faceMesh = null;
+          const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+          vrm.scene.traverse((obj) => {
+            if (obj.isMesh && (obj.name === 'Face' || (obj.morphTargetDictionary && obj.morphTargetDictionary['Fcl_ALL_Joy'] !== undefined))) {
+              faceMesh = obj;
+            }
+            if (obj.isMesh && obj.material) {
+              const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+              mats.forEach((mat) => {
+                // Set max anisotropy for razor-sharp textures (eyes, eyelashes, lace embroidery, hair)
+                if (mat.map) {
+                  mat.map.anisotropy = maxAnisotropy;
+                  mat.map.generateMipmaps = true;
+                  mat.map.minFilter = THREE.LinearMipmapLinearFilter;
+                  mat.map.magFilter = THREE.LinearFilter;
+                  mat.map.needsUpdate = true;
+                }
+                // Crisp anime outlines matching VRoid Studio
+                if (mat.isMToonMaterial) {
+                  mat.outlineWidthMode = 1; // WorldCoordinates
+                  mat.outlineWidthFactor = 0.0022; // Crisp, sharp anime contour
+                  if (mat.name && (mat.name.toLowerCase().includes('hair') || mat.name.toLowerCase().includes('brow'))) {
+                    mat.outlineColorFactor.set('#08080c'); // Deep ink black outline for hair & eyebrows
+                  } else {
+                    mat.outlineColorFactor.set('#351420'); // Dark cherry outline for dress
+                  }
+                  mat.needsUpdate = true;
+                }
+              });
+            }
+          });
+
+          // Position to stand comfortably in the Sakura lake scene
+          vrm.scene.position.set(-0.35, 0, 0);
+
+          // Rest arms pose
+          restPose();
+
+          // Initialize mixer
+          mixer = new THREE.AnimationMixer(currentVrm.scene);
+          mixer.addEventListener("finished", () => {
+            mixer.stopAllAction();
+            isAnimating = false;
+            restPose();
+          });
+
+          // Preload all 7 animations into memory
+          preloadAllAnimations();
+
+          // Default active mode
+          window.currentActiveMode = 'girlfriend';
+
+          // Hide loading screen
+          const loaderEl = document.getElementById('loading-screen');
+          if (loaderEl) loaderEl.classList.add('fade-out');
+
+          console.log('[VRM] Model loaded successfully with HD textures & cel-shading:', vrm);
+
+          // Play gentle greeting animation on startup with beautiful open eyes and a sweet smile!
+          setTimeout(() => {
+            window.playAnim('greeting');
+            window.setVRMExpression('smile');
+          }, 800);
+        },
+        (progress) => {
+          if (progress.total > 0) {
+            console.log(`[VRM] Loading: ${(progress.loaded / progress.total * 100).toFixed(1)}%`);
+          }
+        },
+        (error) => {
+          console.warn('[VRM] Could not load model from', url, error);
+          const loaderEl = document.getElementById('loading-screen');
+          if (loaderEl) loaderEl.classList.add('fade-out');
+        }
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Natural Cute Girl Posture & Conversational Body Language Engine
+    // -------------------------------------------------------------------------
+    function applyCutePose(vrm, isSpeaking, speechTimer, time) {
+      if (!vrm || !vrm.humanoid) return;
+      const b = (name) => vrm.humanoid.getNormalizedBoneNode(name);
+
+      // 1. Shoulders (Soft, relaxed, feminine slope)
+      const ls = b('leftShoulder');
+      const rs = b('rightShoulder');
+      if (ls) ls.rotation.set(0, 0, -0.04);
+      if (rs) rs.rotation.set(0, 0, 0.04);
+
+      // 2. Left Arm (Natural resting pose: elbow bent forward, hand resting near front of skirt)
+      const lua = b('leftUpperArm');
+      const lla = b('leftLowerArm');
+      const lh  = b('leftHand');
+
+      if (lua) {
+        // Arm close to body, slightly forward so it never sticks out straight like an A-pose
+        lua.rotation.set(0.18 + Math.sin(time * 1.5) * 0.012, 0.08, -1.26);
+      }
+      if (lla) {
+        // Elbow bent forward and inward
+        lla.rotation.set(0.35, -0.42, 0.24);
+      }
+      if (lh) {
+        // Hand relaxed, angled gently inward towards thigh
+        lh.rotation.set(0.06, -0.12, -0.15);
+      }
+
+      // 3. Right Arm (Idle: symmetric cute rest; Speaking: cute expressive conversational hand gesture)
+      const rua = b('rightUpperArm');
+      const rla = b('rightLowerArm');
+      const rh  = b('rightHand');
+
+      if (isSpeaking) {
+        // Conversational gesture: right arm lifts naturally towards chest/collar
+        const speakLift  = Math.sin(speechTimer * 3.2) * 0.08 + 0.32;
+        const speakElbow = Math.sin(speechTimer * 3.2) * 0.12 + 0.65;
+        const speakWrist = Math.sin(speechTimer * 4.5) * 0.08;
+
+        if (rua) rua.rotation.set(speakLift, -0.22, 1.10);
+        if (rla) rla.rotation.set(speakElbow, 0.38, -0.28);
+        if (rh)  rh.rotation.set(speakWrist - 0.08, 0.18, 0.15);
+      } else {
+        // Idle: cute resting pose matching left side
+        if (rua) rua.rotation.set(0.18 + Math.sin(time * 1.5) * 0.012, -0.08, 1.26);
+        if (rla) rla.rotation.set(0.35, 0.42, -0.24);
+        if (rh)  rh.rotation.set(0.06, 0.12, 0.15);
+      }
+
+      // 4. Feminine Relaxed Fingers (Curls all 30 finger bones so hands never look like flat boards)
+      const fingers = ['Index', 'Middle', 'Ring', 'Little'];
+
+      // Left Hand Fingers (Natural soft relaxation curve)
+      fingers.forEach((f, idx) => {
+        const p = b(`left${f}Proximal`);
+        const i = b(`left${f}Intermediate`);
+        const d = b(`left${f}Distal`);
+        const curlP = -0.22 - idx * 0.03;
+        const curlI = -0.18;
+        const curlD = -0.12;
+        if (p) p.rotation.set(-0.08, -0.10, curlP);
+        if (i) i.rotation.set(0, 0, curlI);
+        if (d) d.rotation.set(0, 0, curlD);
+      });
+      const ltp = b('leftThumbProximal');
+      const ltd = b('leftThumbDistal');
+      if (ltp) ltp.rotation.set(-0.06, -0.12, -0.15);
+      if (ltd) ltd.rotation.set(0, 0, -0.12);
+
+      // Right Hand Fingers (subtle responsive flutter when speaking)
+      const flutter = isSpeaking ? Math.sin(speechTimer * 5.0) * 0.05 : 0;
+      fingers.forEach((f, idx) => {
+        const p = b(`right${f}Proximal`);
+        const i = b(`right${f}Intermediate`);
+        const d = b(`right${f}Distal`);
+        const curlP = -0.22 - idx * 0.03 + flutter;
+        const curlI = -0.18 + flutter * 0.5;
+        const curlD = -0.12;
+        if (p) p.rotation.set(-0.08, 0.10, -curlP);
+        if (i) i.rotation.set(0, 0, -curlI);
+        if (d) d.rotation.set(0, 0, -curlD);
+      });
+      const rtp = b('rightThumbProximal');
+      const rtd = b('rightThumbDistal');
+      if (rtp) rtp.rotation.set(-0.06, 0.12, 0.15);
+      if (rtd) rtd.rotation.set(0, 0, 0.12);
+    }
+
+    function restPose() {
+      if (!currentVrm || !currentVrm.humanoid) return;
+      applyCutePose(currentVrm, false, 0, clock ? clock.getElapsedTime() : 0);
+    }
+    window.restPose = restPose;
+
+    // =========================================================================
+    // Realistic Conversational Avatar Speaking & Lip-Sync Controller
+    // =========================================================================
+    const VISEMES = ['aa', 'ih', 'ou', 'ee', 'oh'];
+    const currentVisemes = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
+    const targetVisemes  = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
+
+    let isAvatarSpeaking = false;
+    let speechTimer = 0;
+    let speechMode = 'idle'; // 'audio' or 'webspeech'
+
+    // Web Audio API live analyzer for Piper / Audio elements
+    let audioCtx = null;
+    let audioAnalyser = null;
+    let audioSourceNode = null;
+    let audioFreqData = null;
+    let currentAudioElem = null;
+
+    function getAudioCtx() {
+      if (!audioCtx) {
+        const C = window.AudioContext || window.webkitAudioContext;
+        if (C) audioCtx = new C();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // Web Speech API Word-level Phonetic Alignment State
+    let currentWords = [];
+    let currentWordIndex = -1;
+    let currentWordStartTime = 0;
+    let activeSpeechRate = 1.0;
+
+    // Called when HTML5 Audio (Piper TTS) begins playback
+    window.onAvatarAudioStart = function(audioElement, data) {
+      isAvatarSpeaking = true;
+      speechMode = 'audio';
+      currentAudioElem = audioElement;
+      speechTimer = 0;
+
+      try {
+        const ctx = getAudioCtx();
+        if (ctx) {
+          if (!audioAnalyser) {
+            audioAnalyser = ctx.createAnalyser();
+            audioAnalyser.fftSize = 256;
+            audioAnalyser.smoothingTimeConstant = 0.25;
+            audioFreqData = new Uint8Array(audioAnalyser.frequencyBinCount);
+          }
+          if (audioSourceNode) {
+            try { audioSourceNode.disconnect(); } catch (_) {}
+          }
+          audioSourceNode = ctx.createMediaElementSource(audioElement);
+          audioSourceNode.connect(audioAnalyser);
+          audioAnalyser.connect(ctx.destination);
+        }
+      } catch (e) {
+        console.log('[VRM Audio LipSync] Live WebAudio notice:', e);
+      }
+    };
+
+    // Called when Web Speech API begins speaking a text chunk
+    window.onAvatarSpeechStart = function(text, rate) {
+      isAvatarSpeaking = true;
+      speechMode = 'webspeech';
+      activeSpeechRate = rate || 1.0;
+      speechTimer = 0;
+
+      // Tokenize text into words with phonetic vowel prediction
+      currentWords = [];
+      const regex = /\b[a-zA-Z']+\b/g;
+      let m;
+      while ((m = regex.exec(text)) !== null) {
+        const raw = m[0].toLowerCase();
+        let dominant = 'aa';
+        let weight = 0.85;
+
+        // Phonetic vowel classification
+        if (/oo|ou|\bu\b|ue|ew|to|you|who|do|two|through|shoe|true/.test(raw)) {
+          dominant = 'ou'; weight = 0.75;
+        } else if (/o\b|oa|ow|oh|so|no|go|bold|cold|know|home|hope|open/.test(raw)) {
+          dominant = 'oh'; weight = 0.85;
+        } else if (/ee|ea|ie|ey|\be\b|see|me|we|he|she|be|feel|read|meet|teach|peace/.test(raw)) {
+          dominant = 'ee'; weight = 0.85;
+        } else if (/i|y|in|it|is|if|with|think|this|will|did|click|listen/.test(raw)) {
+          dominant = 'ih'; weight = 0.70;
+        } else if (/a|ah|ai|ay|can|and|am|that|what|cat|ask|happy|assistant/.test(raw)) {
+          dominant = 'aa'; weight = 0.85;
+        } else if (raw.length <= 3) {
+          dominant = 'ih'; weight = 0.60;
+        }
+
+        const dur = Math.max(140, Math.min(500, (raw.length / 4.6) * 1000 / activeSpeechRate));
+        currentWords.push({
+          word: raw,
+          charIndex: m.index,
+          viseme: dominant,
+          weight: weight,
+          duration: dur
+        });
+      }
+
+      if (currentWords.length > 0) {
+        currentWordIndex = 0;
+        currentWordStartTime = performance.now();
+      }
+    };
+
+    // Called on word boundary by speech synthesis
+    window.onAvatarSpeechBoundary = function(charIndex, chunkText) {
+      if (!isAvatarSpeaking || currentWords.length === 0) return;
+      for (let i = 0; i < currentWords.length; i++) {
+        if (Math.abs(currentWords[i].charIndex - charIndex) <= 2) {
+          currentWordIndex = i;
+          currentWordStartTime = performance.now();
+          break;
+        }
+      }
+    };
+
+    // Called between sentence chunks (natural breath pause)
+    window.onAvatarSpeechChunkEnd = function() {
+      VISEMES.forEach(v => { targetVisemes[v] = 0; });
+    };
+
+    // Called when entire speech finishes
+    window.onAvatarSpeechEnd = function() {
+      isAvatarSpeaking = false;
+      speechMode = 'idle';
+      currentWordIndex = -1;
+      currentWords = [];
+      VISEMES.forEach(v => { targetVisemes[v] = 0; });
+    };
+
+    // Manual / legacy lip sync hook
+    window.setVRMLipSync = function(aperture) {
+      if (!currentVrm || !currentVrm.expressionManager) return;
+      if (!isAvatarSpeaking) return;
+      targetVisemes.aa = Math.max(0, Math.min(1.0, aperture * 1.5));
+    };
+
+    // -------------------------------------------------------------------------
+    // Eye Blinking & Facial Expressions Engine
+    // -------------------------------------------------------------------------
+    let blinkTimer = 0;
+    let nextBlink = 3.0;
+
+    function updateBlink(delta) {
+      if (!currentVrm || !currentVrm.expressionManager) return;
+      if (isWinking) return; // don't override active cute wink
+      blinkTimer += delta;
+      if (blinkTimer > nextBlink) {
+        const t = blinkTimer - nextBlink;
+        const value = t < 0.08 ? t / 0.08 : Math.max(0, 1 - (t - 0.08) / 0.08);
+        currentVrm.expressionManager.setValue('blink', value);
+        if (t > 0.16) {
+          blinkTimer = 0;
+          nextBlink = 2.5 + Math.random() * 3.5;
+          currentVrm.expressionManager.setValue('blink', 0);
+        }
+      } else {
+        currentVrm.expressionManager.setValue('blink', 0);
+      }
+    }
+
+    // Set Facial Expression on 3D VRM
+    window.setVRMExpression = function(exprName) {
+      targetEmotion = emotionMap[exprName] || emotionMap['smile'] || {};
+      // Update interactive expression pills in UI
+      document.querySelectorAll('.expr-pill-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.expr === exprName);
+      });
+    };
+
+    // Smooth Expression Lerp
+    function updateFace(delta) {
+      if (!currentVrm || !currentVrm.expressionManager) return;
+      FACES.forEach((f) => {
+        const goal = targetEmotion[f] || 0;
+        currentEmotion[f] += (goal - currentEmotion[f]) * Math.min(1.0, delta * 7.0);
+        currentVrm.expressionManager.setValue(f, currentEmotion[f]);
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // Realistic Conversational Body Movements & Romantic Reaction Engine
+    // -------------------------------------------------------------------------
+    let lastAnimName = '';
+    window.triggerAvatarBodyMovement = function(replyText, expression, mode) {
+      if (!currentVrm) return;
+      const txt = (replyText || '').toLowerCase();
+      const m = (mode || window.currentActiveMode || 'girlfriend').toLowerCase();
+
+      console.log(`[Avatar Action] Trigger -> mode: ${m}, expr: ${expression}, text: "${(replyText || '').substring(0, 45)}..."`);
+
+      // 1. Greetings / Welcome
+      if (/\b(hello|hi|hey|konnichiwa|welcome|good morning|good evening|good afternoon|greetings)\b/i.test(txt)) {
+        lastAnimName = 'greeting';
+        window.playAnim('greeting');
+        window.setVRMExpression('neutral');
+        return;
+      }
+
+      // 2. Celebrations / Spin / Dance
+      if (/\b(spin|dance|hurray|woohoo|yay|celebrate|party)\b/i.test(txt)) {
+        lastAnimName = 'spin';
+        window.playAnim('spin');
+        window.setVRMExpression('sparkle_eyes');
+        return;
+      }
+
+      // 3. Cyber / Hacker Mode / Finger Gun
+      if (m === 'cyber' || /\b(kali|firewall|terminal|exploit|hacker|cyber|bypass|payload|root|nmap)\b/i.test(txt)) {
+        lastAnimName = 'finger_gun_pose';
+        window.playAnim('finger_gun_pose');
+        window.setVRMExpression('cyber');
+        return;
+      }
+
+      // 4. Playful / Victory / Laugh / Cheerful
+      if (/\b(peace|victory|haha|hehe|tease|joke|playful|lucky|awesome|cheers)\b/i.test(txt) || expression === 'laugh') {
+        lastAnimName = 'peace_sign';
+        window.playAnim('peace_sign');
+        window.setVRMExpression('sparkle_eyes');
+        window.triggerCuteWink(750);
+        return;
+      }
+
+      // 5. Compliments / Outfit / Cute Appearance
+      if (/\b(outfit|dress|pretty|fashion|look at you|stylish|beauty|cute|glad you like|sweet of you)\b/i.test(txt)) {
+        const anim = (lastAnimName === 'show_fullbody') ? 'model_pose' : 'show_fullbody';
+        lastAnimName = anim;
+        window.playAnim(anim);
+        window.setVRMExpression('blush');
+        window.triggerCuteWink(600);
+        return;
+      }
+
+      // 6. Romantic Love / Affection / Cuddling / Girlfriend Mode
+      const isLove = /\b(love|heart|darling|honey|sweetheart|cuddling|cuddle|special person|favorite person|kiss|hug|cherish|marry|adore|special to me|my heart|warmth|miss you|together|romantic|girlfriend|boyfriend|babe|sweetie|forever|fireplace)\b/i.test(txt);
+      if (isLove || m === 'girlfriend') {
+        const romanticChoices = ['model_pose', 'peace_sign', 'show_fullbody'];
+        let choice = romanticChoices[Math.floor(Math.random() * romanticChoices.length)];
+        if (choice === lastAnimName) {
+          choice = (choice === 'model_pose') ? 'peace_sign' : (choice === 'peace_sign' ? 'show_fullbody' : 'model_pose');
+        }
+        lastAnimName = choice;
+        window.playAnim(choice);
+        window.setVRMExpression('blush');
+        setTimeout(() => window.triggerCuteWink(650), 900);
+        return;
+      }
+
+      // 7. English Coach / Thinking
+      if (m === 'english' || expression === 'think' || /\b(hmm|let's see|ponder|think|concept|correction)\b/i.test(txt)) {
+        lastAnimName = 'greeting';
+        window.playAnim('greeting');
+        window.setVRMExpression('think');
+        return;
+      }
+
+      // 8. Default
+      if (expression === 'smile') {
+        window.playAnim('model_pose');
+        window.setVRMExpression('smile');
+      } else {
+        window.setVRMExpression(expression || 'smile');
+      }
+    };
+
+    // -------------------------------------------------------------------------
+    // Render & Animation Loop
+    // -------------------------------------------------------------------------
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+      const time = clock.getElapsedTime();
+
+      // Update VRM Character
+      if (currentVrm) {
+        updateBlink(delta);
+        updateFace(delta);
+
+        // -----------------------------------------------------------------
+        // Speech Articulation & Lip-Sync
+        // -----------------------------------------------------------------
+        if (isAvatarSpeaking) {
+          speechTimer += delta;
+
+          if (speechMode === 'audio') {
+            let energy = 0;
+            let lowBand = 0;
+            let highBand = 0;
+
+            if (audioAnalyser && audioFreqData && currentAudioElem && !currentAudioElem.paused) {
+              audioAnalyser.getByteFrequencyData(audioFreqData);
+              let totalSum = 0, lowSum = 0, highSum = 0;
+              const len = audioFreqData.length;
+              for (let i = 0; i < len; i++) {
+                const val = audioFreqData[i];
+                totalSum += val;
+                if (i >= 2 && i <= 14) lowSum += val;
+                if (i >= 15 && i <= 50) highSum += val;
+              }
+              energy = Math.min(1.0, (totalSum / len / 128) * 2.4);
+              lowBand = Math.min(1.0, (lowSum / 13 / 128) * 2.2);
+              highBand = Math.min(1.0, (highSum / 36 / 128) * 2.4);
+            } else if (typeof window.speechOpenAmount === 'number') {
+              energy = window.speechOpenAmount;
+              lowBand = energy * 0.9;
+              highBand = energy * 0.7;
+            }
+
+            if (energy > 0.08) {
+              targetVisemes.aa = lowBand * 0.85;
+              targetVisemes.oh = lowBand * 0.45;
+              targetVisemes.ee = highBand * 0.65;
+              targetVisemes.ih = highBand * 0.45;
+              targetVisemes.ou = (lowBand > 0.6) ? 0.4 : 0;
+            } else {
+              VISEMES.forEach(v => { targetVisemes[v] = 0; });
+            }
+
+          } else if (speechMode === 'webspeech') {
+            const now = performance.now();
+            const elapsed = now - currentWordStartTime;
+
+            if (currentWordIndex >= 0 && currentWordIndex < currentWords.length) {
+              const currentW = currentWords[currentWordIndex];
+              if (elapsed > currentW.duration) {
+                if (currentWordIndex + 1 < currentWords.length) {
+                  currentWordIndex++;
+                  currentWordStartTime = now;
+                }
+              }
+
+              const activeW = currentWords[currentWordIndex];
+              if (activeW) {
+                const wElapsed = now - currentWordStartTime;
+                const progress = Math.min(1.0, wElapsed / activeW.duration);
+
+                let openness = 0;
+                if (progress < 0.35) {
+                  openness = progress / 0.35;
+                } else if (progress < 0.75) {
+                  openness = 1.0;
+                } else {
+                  openness = Math.max(0, 1.0 - (progress - 0.75) / 0.25);
+                }
+
+                const amp = openness * activeW.weight;
+                const vis = activeW.viseme;
+
+                targetVisemes.aa = (vis === 'aa') ? amp : (vis === 'oh' ? amp * 0.3 : 0);
+                targetVisemes.oh = (vis === 'oh') ? amp : (vis === 'ou' ? amp * 0.4 : 0);
+                targetVisemes.ee = (vis === 'ee') ? amp : (vis === 'ih' ? amp * 0.35 : 0);
+                targetVisemes.ih = (vis === 'ih') ? amp : (vis === 'ee' ? amp * 0.35 : 0);
+                targetVisemes.ou = (vis === 'ou') ? amp : 0;
+              }
+            } else {
+              const rhythm = Math.sin(speechTimer * 10.0);
+              if (rhythm > 0.1) {
+                targetVisemes.aa = rhythm * 0.65;
+                targetVisemes.ee = rhythm * 0.35;
+              } else {
+                VISEMES.forEach(v => { targetVisemes[v] = 0; });
+              }
+            }
+          }
+
+        } else {
+          VISEMES.forEach(v => { targetVisemes[v] = 0; });
+        }
+
+        // Apply Visemes to VRM with crisp organic interpolation
+        const vSpeed = Math.min(1.0, delta * 24.0);
+        VISEMES.forEach(v => {
+          currentVisemes[v] += (targetVisemes[v] - currentVisemes[v]) * vSpeed;
+          const clamped = Math.max(0, Math.min(1.0, currentVisemes[v]));
+          currentVrm.expressionManager.setValue(v, clamped);
+        });
+
+        // -----------------------------------------------------------------
+        // Humanoid Animation & Natural Idle
+        // -----------------------------------------------------------------
+        if (mixer) {
+          mixer.update(delta);
+        }
+
+        if (!isAnimating && currentVrm.humanoid) {
+          const isGF = (window.currentActiveMode === 'girlfriend');
+          const swaySpeed = isGF ? 1.05 : 0.82;
+          const swayAmp = isGF ? 0.045 : 0.028;
+
+          // Soft romantic hip sway and weight shift
+          const hipSwayY = Math.sin(time * swaySpeed) * swayAmp;
+          const hipSwayZ = Math.cos(time * swaySpeed) * 0.015;
+          const hipShiftX = Math.sin(time * swaySpeed) * (isGF ? 0.018 : 0.008);
+
+          // Natural breathing
+          const breathChest = Math.sin(time * 1.5) * 0.022;
+          const breathSpine = Math.sin(time * 1.5) * 0.014;
+
+          // Sweet conversational head tilt & rhythmic speech nod
+          const idleTilt = Math.sin(time * 0.9) * 0.038;
+          let nod = 0, tilt = idleTilt, turn = 0;
+          if (isAvatarSpeaking) {
+            nod = Math.sin(speechTimer * 6.8) * 0.045 + Math.sin(speechTimer * 2.4) * 0.022;
+            tilt = idleTilt + (Math.sin(speechTimer * 2.2) * 0.040 + 0.042);
+            turn = Math.sin(speechTimer * 1.4) * 0.032;
+          }
+
+          // Mouse gaze tracking (natural eye contact with user)
+          lookTargetX += (mouse.x * 0.18 - lookTargetX) * Math.min(1.0, delta * 3.5);
+          lookTargetY += (-mouse.y * 0.14 - lookTargetY) * Math.min(1.0, delta * 3.5);
+
+          const hipsNode = bone('hips');
+          if (hipsNode) {
+            hipsNode.position.x = hipShiftX;
+            hipsNode.rotation.set(0, hipSwayY, hipSwayZ);
+          }
+
+          const spineNode = bone('spine');
+          if (spineNode) {
+            spineNode.rotation.set(breathSpine, isAvatarSpeaking ? Math.sin(speechTimer * 1.2) * 0.015 : 0, 0);
+          }
+
+          const chestNode = bone('chest');
+          if (chestNode) {
+            chestNode.rotation.set(breathChest, 0, 0);
+          }
+
+          const neckNode = bone('neck');
+          if (neckNode) {
+            neckNode.rotation.set(0, lookTargetX * 0.35, 0);
+          }
+
+          const headNode = bone('head');
+          if (headNode) {
+            headNode.rotation.set(-0.02 + nod + lookTargetY, turn + lookTargetX * 0.55, tilt);
+          }
+
+          // Apply natural cute girl arms, bent elbows, feminine wrists, and curled fingers!
+          applyCutePose(currentVrm, isAvatarSpeaking, speechTimer, time);
+        }
+        currentVrm.update(delta);
+
+        // Double guarantee: Ensure eyes never squint or close, and mouth stays petite & cute
+        if (faceMesh && faceMesh.morphTargetInfluences && faceMesh.morphTargetDictionary) {
+          const allJoy = faceMesh.morphTargetDictionary['Fcl_ALL_Joy'];
+          const eyeJoy = faceMesh.morphTargetDictionary['Fcl_EYE_Joy'];
+          const allFun = faceMesh.morphTargetDictionary['Fcl_ALL_Fun'];
+          const eyeFun = faceMesh.morphTargetDictionary['Fcl_EYE_Fun'];
+          const mthJoy = faceMesh.morphTargetDictionary['Fcl_MTH_Joy'];
+          const mthLarge = faceMesh.morphTargetDictionary['Fcl_MTH_Large'];
+          const mthSmall = faceMesh.morphTargetDictionary['Fcl_MTH_Small'];
+
+          if (allJoy !== undefined) faceMesh.morphTargetInfluences[allJoy] = 0;
+          if (eyeJoy !== undefined) faceMesh.morphTargetInfluences[eyeJoy] = 0;
+          if (allFun !== undefined) faceMesh.morphTargetInfluences[allFun] = 0;
+          if (eyeFun !== undefined) faceMesh.morphTargetInfluences[eyeFun] = 0;
+
+          // Prevent large gaping open mouth, keep mouth petite and small
+          if (mthJoy !== undefined) faceMesh.morphTargetInfluences[mthJoy] = 0;
+          if (mthLarge !== undefined) faceMesh.morphTargetInfluences[mthLarge] = 0;
+          if (mthSmall !== undefined) {
+            faceMesh.morphTargetInfluences[mthSmall] = Math.max(faceMesh.morphTargetInfluences[mthSmall] || 0, 0.70);
+          }
+
+          // When not blinking or winking, ensure eyelids are completely open
+          if (blinkTimer <= nextBlink && !isWinking) {
+            const eyeClose = faceMesh.morphTargetDictionary['Fcl_EYE_Close'];
+            if (eyeClose !== undefined) faceMesh.morphTargetInfluences[eyeClose] = 0;
+          }
+        }
+      }
+
+      // Animate Falling Sakura Petals
+      if (sakuraParticles) {
+        const pos = sakuraParticles.geometry.attributes.position.array;
+        const speeds = sakuraParticles.userData.speeds;
+        for (let i = 0; i < pos.length / 3; i++) {
+          pos[i * 3 + 0] += speeds[i * 3 + 0] + Math.sin(time + i) * 0.002;
+          pos[i * 3 + 1] += speeds[i * 3 + 1];
+          pos[i * 3 + 2] += speeds[i * 3 + 2];
+
+          // Reset to top when fallen
+          if (pos[i * 3 + 1] < -1.0) {
+            pos[i * 3 + 1] = 5.0;
+            pos[i * 3 + 0] = (Math.random() - 0.5) * 10;
+            pos[i * 3 + 2] = (Math.random() - 0.5) * 8;
+          }
+        }
+        sakuraParticles.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // Update Camera Controls & Render
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // Window Resize Handler
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      if (camera.aspect < 0.8) {
+        camera.position.z = 3.6;
+      } else {
+        camera.position.z = 2.5;
+      }
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Start everything on page load
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+
+  <!-- Load existing Niramyan-AI logic -->
+  <script src="/static/app.js"></script>
+</body>
+</html>

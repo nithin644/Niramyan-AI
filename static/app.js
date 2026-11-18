@@ -183,13 +183,13 @@ function speechLoop() {
   let targetAperture = 0;
 
   if (isSpeaking) {
-    if (activeEngine === 'piper' && currentAudio && !currentAudio.paused && audioAmplitudes.length > 0) {
+    if (currentAudio && !currentAudio.paused && audioAmplitudes.length > 0) {
       const curTime = currentAudio.currentTime;
       const frameIndex = Math.floor(curTime * audioFps);
       if (frameIndex >= 0 && frameIndex < audioAmplitudes.length) {
         targetAperture = audioAmplitudes[frameIndex] || 0;
       }
-    } else if (activeEngine === 'webspeech') {
+    } else {
       targetAperture = getWebSpeechAperture();
     }
   }
@@ -197,6 +197,13 @@ function speechLoop() {
   // Smooth amplitude transition
   const rate = targetAperture > speechOpenAmount ? 0.45 : 0.20;
   speechOpenAmount = lerp(speechOpenAmount, targetAperture, rate);
+  window.speechOpenAmount = speechOpenAmount;
+  window.isSpeaking = isSpeaking;
+
+  // Hook 3D VRM Lip-Sync if available
+  if (typeof window.setVRMLipSync === 'function') {
+    window.setVRMLipSync(speechOpenAmount);
+  }
 
   // Toggle between talk frame and base emotion frame cleanly without any drawn mouth
   if (isSpeaking && speechOpenAmount > 0.22 && !isBlinking) {
@@ -305,9 +312,9 @@ function setMicState(state) {
    so the speech engine never reads out emoji names like "movie camera"
    =================================================================== */
 function stripEmojis(text) {
-  // Covers emoticons, misc symbols, transport, supplemental symbols,
-  // dingbats, enclosed chars, ZWJ sequences, variation selectors, etc.
-  return text
+  // Strip leaked LLM template tokens first
+  let cleaned = (text || '').replace(/<\|[\s\S]*$/, '').trim();
+  return cleaned
     .replace(/[\u{1F600}-\u{1F64F}]/gu, '')   // emoticons
     .replace(/[\u{1F300}-\u{1F5FF}]/gu, '')   // misc symbols & pictographs
     .replace(/[\u{1F680}-\u{1F6FF}]/gu, '')   // transport & map
@@ -360,6 +367,9 @@ async function speak(text, expr = 'smile') {
 
   // Immediately stop currently playing speech and clear queue
   stopSpeaking();
+  if (typeof window.triggerAvatarBodyMovement === 'function') {
+    window.triggerAvatarBodyMovement(cleanText, expr, currentMode);
+  }
   enqueueSpeech(cleanText, expr);
 }
 
@@ -380,10 +390,14 @@ function stopSpeaking() {
   }
 
   isSpeaking       = false;
+  window.isSpeaking = false;
+  window.speechOpenAmount = 0;
+  if (typeof window.onAvatarSpeechEnd === 'function') {
+    window.onAvatarSpeechEnd();
+  }
   speakQueue       = [];
   audioAmplitudes  = [];
   audioVisemes     = [];
-  speechOpenAmount = 0;
 
   const vb = $('voiceBars');
   if (vb) vb.style.opacity = '0';
@@ -458,10 +472,15 @@ async function speakPiper(text, expr) {
     try {
       await audio.play();
       gestureUnlocked = true;
+      window.isSpeaking = true;
+      if (typeof window.onAvatarAudioStart === 'function') {
+        window.onAvatarAudioStart(audio, data);
+      }
       return true;
     } catch (playErr) {
       console.warn('[Piper] Audio play prevented by browser policy (awaiting user gesture):', playErr);
       isSpeaking = false;
+      window.isSpeaking = false;
       return false;
     }
 
@@ -514,17 +533,27 @@ function playNextWebSpeechChunk(expr) {
     startFired = true;
     clearTimeout(stallWatchdog);
     startWebSpeechPhonemes(chunk);
+    window.isSpeaking = true;
+    if (typeof window.onAvatarSpeechStart === 'function') {
+      window.onAvatarSpeechStart(chunk, speechRate);
+    }
   };
 
   u.onboundary = (e) => {
-    if (e.name === 'word' && e.charIndex !== undefined) {
+    if (e.name === 'word' && typeof e.charIndex === 'number') {
       phonemeStart = performance.now() - (e.elapsedTime || 0) * 1000;
+      if (typeof window.onAvatarSpeechBoundary === 'function') {
+        window.onAvatarSpeechBoundary(e.charIndex, chunk);
+      }
     }
   };
 
   const finalize = (e) => {
     clearTimeout(stallWatchdog);
     currentUtterance = null;
+    if (typeof window.onAvatarSpeechChunkEnd === 'function') {
+      window.onAvatarSpeechChunkEnd();
+    }
     if (e && e.type === 'error' && e.error === 'canceled') return;
     playNextWebSpeechChunk(expr);
   };
@@ -621,6 +650,10 @@ function splitSentencesForWebSpeech(text, maxLen = 160) {
 }
 
 function applyMoodForExpression(expr) {
+  if (typeof window.setVRMExpression === 'function') {
+    window.setVRMExpression(expr);
+  }
+
   if (expr === 'laugh') {
     setMood('laughing'); sparkles(); playLaugh();
   } else if (expr === 'cyber') {
@@ -642,10 +675,14 @@ function onSpeechComplete() {
   }
 
   isSpeaking       = false;
+  window.isSpeaking = false;
+  window.speechOpenAmount = 0;
+  if (typeof window.onAvatarSpeechEnd === 'function') {
+    window.onAvatarSpeechEnd();
+  }
   currentAudio     = null;
   audioAmplitudes  = [];
   audioVisemes     = [];
-  speechOpenAmount = 0;
 
   const vb = $('voiceBars');
   if (vb) vb.style.opacity = '0';
@@ -734,7 +771,11 @@ function initRecognition() {
     if (t && !busy) {
       input.value = '';
       input.style.height = 'auto';
-      send(t);
+      let preTab = null;
+      if (typeof detectActionIntent === 'function' && detectActionIntent(t)) {
+        try { preTab = window.open('about:blank', '_blank'); } catch (_) {}
+      }
+      send(t, preTab);
     } else if (recognitionErrors >= MAX_REC_ERRORS) {
       // Offline — don't retry, stay in offline state
       setMicState('offline');
@@ -895,7 +936,8 @@ if ('speechSynthesis' in window) {
    Messages & Chat UI
    =================================================================== */
 function formatMsgText(text) {
-  let html = esc(text);
+  let cleaned = (text || '').replace(/<\|[\s\S]*$/, '').trim();
+  let html = esc(cleaned);
   html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
   html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
   html = html.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
@@ -905,7 +947,100 @@ function formatMsgText(text) {
   return html;
 }
 
-function addMsg(role, text, expr = null, actionUrl = null, actionTitle = null, actionType = null, contactName = null) {
+/* ===================================================================
+   Action & Auto-Open Engine (YouTube, WhatsApp, Browser Navigation)
+   =================================================================== */
+function detectActionIntent(text) {
+  if (!text) return false;
+  const t = text.trim().toLowerCase();
+  // YouTube intent: play music, open youtube, search video
+  if (/\byoutube\b/i.test(t)) return true;
+  if (/^play\s+/i.test(t) && !/\b(game|role|quiz|part|chess)\b/i.test(t)) return true;
+  // WhatsApp intent: send message, open whatsapp
+  if (/\b(?:whatsapp|wa)\b/i.test(t)) return true;
+  // Browser/Search intent
+  if (/\b(?:open|launch)\s+(?:browser|google|website|web\s+page)\b/i.test(t)) return true;
+  return false;
+}
+
+function openActionUrl(url, preOpenedTab = null) {
+  if (!url) return false;
+
+  // 1. If we have a pre-opened tab (synchronously opened during user click/Enter), navigate it!
+  if (preOpenedTab && !preOpenedTab.closed) {
+    try {
+      preOpenedTab.location.href = url;
+      try { preOpenedTab.focus(); } catch (_) {}
+      console.log('[AutoOpen] Navigated pre-opened tab to:', url);
+      return true;
+    } catch (e) {
+      console.warn('[AutoOpen] Failed to navigate pre-opened tab:', e);
+    }
+  }
+
+  // 2. Direct window.open in new tab
+  try {
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (win && !win.closed && typeof win.closed !== 'undefined') {
+      try { win.focus(); } catch (_) {}
+      console.log('[AutoOpen] window.open succeeded for:', url);
+      return true;
+    }
+  } catch (e) {
+    console.warn('[AutoOpen] Direct window.open blocked by browser:', e);
+  }
+
+  // 3. Programmatic link click fallback
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    console.log('[AutoOpen] Programmatic anchor click triggered:', url);
+    return true;
+  } catch (e) {
+    console.warn('[AutoOpen] Anchor click fallback failed:', e);
+  }
+
+  return false;
+}
+
+function showAutoOpenToast(url, title, type = 'youtube') {
+  let toast = document.getElementById('autoOpenToast');
+  if (toast) toast.remove();
+
+  toast = document.createElement('div');
+  toast.id = 'autoOpenToast';
+  toast.className = 'auto-open-toast ' + (type === 'whatsapp' ? 'wa' : 'yt');
+
+  const icon = type === 'whatsapp' ? '💬' : '▶';
+  const label = title || (type === 'whatsapp' ? 'WhatsApp' : 'YouTube');
+
+  toast.innerHTML = `
+    <div class="toast-content">
+      <span class="toast-title">${icon} <b>${esc(label)}</b> is ready!</span>
+      <div class="toast-actions">
+        <a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="toast-btn">Open in Browser ↗</a>
+        <button type="button" class="toast-close" title="Close">✕</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(toast);
+
+  toast.querySelector('.toast-close').onclick = () => toast.remove();
+  toast.querySelector('.toast-btn').onclick = () => {
+    setTimeout(() => { if (toast && toast.parentElement) toast.remove(); }, 600);
+  };
+
+  setTimeout(() => {
+    if (toast && toast.parentElement) toast.remove();
+  }, 14000);
+}
+
+function addMsg(role, text, expr = null, actionUrl = null, actionTitle = null, actionType = null, contactName = null, isOpened = false, extraData = null) {
   const d = document.createElement('div');
   d.className = 'msg ' + (role === 'user' ? 'user' : '');
 
@@ -932,22 +1067,97 @@ function addMsg(role, text, expr = null, actionUrl = null, actionTitle = null, a
     link.rel = 'noopener noreferrer';
     
     if (actionType === 'whatsapp' || actionUrl.includes('whatsapp.com')) {
-      link.className = 'wa-link-btn';
+      link.className = 'wa-link-btn' + (isOpened ? ' opened' : ' needs-click');
       if (contactName) {
-        link.innerHTML = `💬 Open WhatsApp: Message to ${esc(contactName)}`;
+        link.innerHTML = isOpened
+          ? `💬 Opened WhatsApp: Message to ${esc(contactName)} ↗`
+          : `💬 Open WhatsApp: Message to ${esc(contactName)} ↗`;
       } else {
-        link.innerHTML = '💬 Open in WhatsApp Web';
+        link.innerHTML = isOpened ? '💬 Opened in WhatsApp Web ↗' : '💬 Open in WhatsApp Web ↗';
       }
     } else {
-      link.className = 'yt-link-btn';
+      link.className = 'yt-link-btn' + (isOpened ? ' opened' : ' needs-click');
       const isPlaying = actionUrl.includes('watch?v=');
       if (isPlaying) {
-        link.innerHTML = actionTitle ? `▶ Now Playing: ${esc(actionTitle)}` : '▶ Now Playing on YouTube';
+        const titleText = actionTitle ? esc(actionTitle) : 'YouTube Video';
+        link.innerHTML = isOpened
+          ? `▶ Playing in Browser: ${titleText} ↗`
+          : `▶ Click to Play: ${titleText} ↗`;
       } else {
-        link.innerHTML = '🔍 Open YouTube Search';
+        link.innerHTML = isOpened ? '🔍 YouTube Opened in Browser ↗' : '🔍 Open YouTube Search ↗';
       }
     }
     body.appendChild(link);
+  }
+
+  // Quick-Save Contact Card for WhatsApp when phone is not yet saved
+  if (actionType === 'whatsapp' && contactName && (!extraData || !extraData.phone)) {
+    // 1. Auto-copy contact name to clipboard so user can press Ctrl+V directly in WhatsApp search
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(contactName).then(() => {
+        console.log('[WhatsApp] Copied contact name to clipboard:', contactName);
+      }).catch(() => {});
+    }
+
+    // 2. Render inline interactive card
+    const card = document.createElement('div');
+    card.className = 'quick-contact-card';
+    card.innerHTML = `
+      <div class="qcc-header">
+        <span>📱 <b>Save ${esc(contactName)}</b> for 1-click direct sending next time:</span>
+      </div>
+      <div class="qcc-row">
+        <input type="tel" class="qcc-input" placeholder="Enter phone number (e.g. 9876543210)" />
+        <button type="button" class="qcc-save-btn">💾 Save & Send</button>
+      </div>
+      <small class="qcc-hint">📋 Copied "<b>${esc(contactName)}</b>" to clipboard! In WhatsApp search, press <b>Ctrl+V</b> to find them now.</small>
+    `;
+
+    const input = card.querySelector('.qcc-input');
+    const btn = card.querySelector('.qcc-save-btn');
+
+    const doSave = async () => {
+      const phone = input.value.trim();
+      if (!phone) {
+        input.focus();
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const res = await fetch('/api/contacts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: contactName, phone })
+        });
+        const resData = await res.json();
+        if (resData.ok) {
+          card.innerHTML = `<div class="qcc-saved">✅ Saved <b>${esc(contactName)}</b> (+${esc(resData.phone)})! Opening direct chat now…</div>`;
+          const msgParam = (extraData && extraData.message) ? `&text=${encodeURIComponent(extraData.message)}` : '';
+          const directUrl = `https://web.whatsapp.com/send?phone=${resData.phone}${msgParam}`;
+          openActionUrl(directUrl);
+          if (typeof loadContactsUI === 'function') loadContactsUI();
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Retry';
+          alert('Could not save contact: ' + (resData.error || 'Unknown error'));
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+        console.error(err);
+      }
+    };
+
+    btn.onclick = doSave;
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doSave();
+      }
+    });
+
+    body.appendChild(card);
   }
 
   d.append(badge, body);
@@ -989,9 +1199,14 @@ function esc(s) {
 /* ===================================================================
    Send / Chat Pipeline — Streaming SSE with Early Voice Synthesis
    =================================================================== */
-async function send(text) {
+async function send(text, preTab = null) {
   text = text.trim();
-  if (!text || busy) return;
+  if (!text || busy) {
+    if (preTab && !preTab.closed) {
+      try { preTab.close(); } catch (_) {}
+    }
+    return;
+  }
   unlockAll();
 
   if (recognition && listening) recognition.stop();
@@ -1041,9 +1256,24 @@ async function send(text) {
       const actionTitle = data.title || null;
       const actionType = data.action || null;
       const contactName = data.contact || null;
+      const contactPhone = data.phone || null;
+      const contactMsg = data.message || '';
+
+      let isOpened = false;
+      if (actionUrl) {
+        isOpened = openActionUrl(actionUrl, preTab);
+        if (!isOpened) {
+          showAutoOpenToast(actionUrl, actionTitle, actionType || 'youtube');
+        }
+      } else if (preTab && !preTab.closed) {
+        try { preTab.close(); } catch (_) {}
+      }
 
       history.push({ role: 'assistant', content: data.raw_answer || answer });
-      addMsg('assistant', answer, expr, actionUrl, actionTitle, actionType, contactName);
+      addMsg('assistant', answer, expr, actionUrl, actionTitle, actionType, contactName, isOpened, {
+        phone: contactPhone,
+        message: contactMsg
+      });
 
       if (data.new_mode && data.new_mode !== currentMode) {
         const targetChip = document.querySelector(`.mode-chip[data-mode="${data.new_mode}"]`);
@@ -1106,14 +1336,17 @@ async function send(text) {
         }
 
         if (payload.token) {
+          if (payload.token.includes('<|')) {
+            continue;
+          }
           fullRaw += payload.token;
 
           // Check for initial emotion tag e.g. [smile]
-          let textToShow = fullRaw;
-          const tagMatch = fullRaw.match(/^\[(smile|laugh|think|cyber|english)\]\s*/i);
+          let textToShow = fullRaw.replace(/<\|[\s\S]*$/, '').trim();
+          const tagMatch = textToShow.match(/^\[(smile|laugh|think|cyber|english)\]\s*/i);
           if (tagMatch) {
             detectedExpr = tagMatch[1].toLowerCase();
-            textToShow = fullRaw.slice(tagMatch[0].length);
+            textToShow = textToShow.slice(tagMatch[0].length);
             if (streamMsg) {
               streamMsg.hdr.textContent = 'Ramya ' + (emMap[detectedExpr] || '😊') + ' · now';
               applyMoodForExpression(detectedExpr);
@@ -1132,6 +1365,9 @@ async function send(text) {
             if (sm && sm[1].trim().length >= 10) {
               sentence1Spoken = true;
               sentence1Text = sm[1].trim();
+              if (typeof window.triggerAvatarBodyMovement === 'function') {
+                window.triggerAvatarBodyMovement(sentence1Text, detectedExpr, currentMode);
+              }
               enqueueSpeech(sentence1Text, detectedExpr);
             }
           }
@@ -1150,15 +1386,26 @@ async function send(text) {
             streamMsg.hdr.textContent = 'Ramya ' + (emMap[expr] || '😊') + ' · now';
 
             if (payload.url) {
+              const isOpened = openActionUrl(payload.url, preTab);
               const link = document.createElement('a');
               link.href = payload.url;
               link.target = '_blank';
               link.rel = 'noopener noreferrer';
-              link.className = 'wa-link-btn';
-              link.innerHTML = '🔗 Open Link';
+              const isYt = payload.url.includes('youtube.com') || payload.url.includes('youtu.be');
+              link.className = (isYt ? 'yt-link-btn' : 'wa-link-btn') + (isOpened ? ' opened' : ' needs-click');
+              link.innerHTML = isYt 
+                ? (isOpened ? '▶ Playing in Browser (Opened ↗)' : '▶ Click to Play on YouTube ↗')
+                : (isOpened ? '🔗 Link Opened in Browser ↗' : '🔗 Open Link ↗');
               streamMsg.body.appendChild(link);
+              if (!isOpened) {
+                showAutoOpenToast(payload.url, 'Link');
+              }
+            } else if (preTab && !preTab.closed) {
+              try { preTab.close(); } catch (_) {}
             }
             messages.scrollTop = messages.scrollHeight;
+          } else if (preTab && !preTab.closed) {
+            try { preTab.close(); } catch (_) {}
           }
 
           history.push({ role: 'assistant', content: payload.raw_answer || finalAnswer });
@@ -1170,6 +1417,9 @@ async function send(text) {
               enqueueSpeech(remainder, expr);
             }
           } else if (finalAnswer) {
+            if (typeof window.triggerAvatarBodyMovement === 'function') {
+              window.triggerAvatarBodyMovement(finalAnswer, expr, currentMode);
+            }
             enqueueSpeech(finalAnswer, expr);
           }
         }
@@ -1177,6 +1427,9 @@ async function send(text) {
     }
 
   } catch(err) {
+    if (preTab && !preTab.closed) {
+      try { preTab.close(); } catch (_) {}
+    }
     showThinking(false);
     sendBtn.disabled = false;
     busy = false;
@@ -1189,7 +1442,15 @@ async function send(text) {
   }
 }
 
-form.onsubmit = e => { e.preventDefault(); send(input.value); };
+form.onsubmit = e => {
+  e.preventDefault();
+  const val = input.value.trim();
+  let preTab = null;
+  if (typeof detectActionIntent === 'function' && detectActionIntent(val)) {
+    try { preTab = window.open('about:blank', '_blank'); } catch (_) {}
+  }
+  send(val, preTab);
+};
 input.onkeydown = e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
 };
@@ -1211,8 +1472,11 @@ clearBtn.onclick = () => {
    =================================================================== */
 const MODE_PILLS = {
   girlfriend: [
+    { label: "❤️ Do you love me?", prompt: "Do you love me, Ramya?" },
+    { label: "🌸 You look so cute!", prompt: "Ramya, you look so sweet and cute today! 🌸" },
+    { label: "✨ Romantic thought", prompt: "Tell me something loving and romantic!" },
+    { label: "✌️ Cute Peace Sign", prompt: "Show me your cute peace sign!" },
     { label: "💬 How was your day?", prompt: "How was your day, Ramya? What did you do today?" },
-    { label: "❤️ Do you love me?", prompt: "Do you love me?" },
     { label: "🎵 Play a relaxing song", prompt: "Open youtube and play a relaxing song" },
     { label: "📱 Open WhatsApp", prompt: "Open WhatsApp" },
   ],
@@ -1247,7 +1511,13 @@ function renderTopicPills(mode) {
     btn.className = 'topic-pill';
     btn.textContent = p.label;
     btn.dataset.prompt = p.prompt;
-    btn.onclick = () => send(p.prompt);
+    btn.onclick = () => {
+      let preTab = null;
+      if (typeof detectActionIntent === 'function' && detectActionIntent(p.prompt)) {
+        try { preTab = window.open('about:blank', '_blank'); } catch (_) {}
+      }
+      send(p.prompt, preTab);
+    };
     container.appendChild(btn);
   });
 }
@@ -1257,8 +1527,12 @@ document.querySelectorAll('.mode-chip').forEach(chip => {
     document.querySelectorAll('.mode-chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     currentMode = chip.dataset.mode;
+    window.currentActiveMode = currentMode;
     playChime();
     renderTopicPills(currentMode);
+    if (typeof window.triggerAvatarBodyMovement === 'function') {
+      window.triggerAvatarBodyMovement('', currentMode === 'girlfriend' ? 'blush_or_sly_smile' : 'smile', currentMode);
+    }
     if (currentMode === 'cyber') setMood('cyber');
     else if (currentMode === 'english') {
       setMood('smiling');

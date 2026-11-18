@@ -7,7 +7,7 @@ import threading
 import webbrowser
 import shutil
 import requests
-from flask import Flask, request, jsonify, render_template_string, Response, stream_with_context
+from flask import Flask, request, jsonify, render_template_string, Response, stream_with_context, send_from_directory, send_file
 import tts_engine
 import english_coach
 import identity
@@ -334,15 +334,27 @@ def get_preferred_browser():
 
 def open_url_in_browser(url: str):
     """
-    Opens a URL in the desktop browser in the background without blocking.
-    Directly targets working browser binaries on Kali Linux to guarantee automated opening.
+    Opens a URL in the desktop browser in the background if a GUI display is present.
+    Also complemented by client-side auto-opening in static/app.js so it opens reliably
+    in the user's active browser window/tab across all environments.
     """
     def _run():
-        env = os.environ.copy()
-        env.setdefault('DISPLAY', ':0')
+        has_display = bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'))
         uid = str(os.getuid())
-        if os.path.exists(f'/run/user/{uid}/wayland-0'):
-            env.setdefault('WAYLAND_DISPLAY', 'wayland-0')
+        wayland_sock = f'/run/user/{uid}/wayland-0'
+        x11_sock = '/tmp/.X11-unix'
+        has_x11 = os.path.exists(x11_sock) and len(os.listdir(x11_sock)) > 0
+        has_wayland = os.path.exists(wayland_sock)
+
+        if not (has_display or has_x11 or has_wayland):
+            print(f"[Browser] No local GUI desktop server attached. Client-side browser will auto-open: {url}")
+            return
+
+        env = os.environ.copy()
+        if has_x11 and not env.get('DISPLAY'):
+            env['DISPLAY'] = ':0'
+        if has_wayland and not env.get('WAYLAND_DISPLAY'):
+            env['WAYLAND_DISPLAY'] = 'wayland-0'
         if os.path.exists(f'/run/user/{uid}/bus'):
             env.setdefault('DBUS_SESSION_BUS_ADDRESS', f'unix:path=/run/user/{uid}/bus')
 
@@ -656,61 +668,141 @@ def parse_app_launch_intent(text: str):
     return False, None
 
 
+def clean_target_person(p: str) -> str:
+    if not p:
+        return ''
+    p = re.sub(r'^(?:a|an|the|for|to)\s+', '', p, flags=re.I)
+    p = re.sub(r'\s+on\s+whatsapp\b.*$', '', p, flags=re.I)
+    p = re.sub(r'(?:\'s\s+contact|s\s+contact|\s+contact|\s+contacts)[!.?]*$', '', p, flags=re.I)
+    return p.strip()
+
+
+def clean_msg_text(m: str) -> str:
+    if not m:
+        return ''
+    m = re.sub(r'^(?:a\s+)?(?:whatsapp\s+)?message\s+(?:saying|that|with)?\s*', '', m, flags=re.I)
+    m = re.sub(r'^(?:saying|that|with)\s*', '', m, flags=re.I)
+    m = re.sub(r'(?:\s+message)[!.?]*$', '', m, flags=re.I)
+    return m.strip().strip('\"\'')
+
+
 def parse_save_contact_intent(text: str):
     if not text:
         return False, None, None
-    t = clean_command(text)
-    m = re.search(r'(?:save|add|remember|set)\s+contact\s+([a-zA-Z0-9_\s]+?)(?:\s+(?:as|number|phone|with|:)\s*|\s*:\s*|\s+)([0-9\+\-\s\(\)]{7,})', t, re.I)
+    t = clean_command(text).rstrip('.!?')
+    
+    # 1. "save/add/remember/set (contact)? <name> (as/number/phone/is/:)? <phone>"
+    m = re.search(r'^(?:can you\s+|please\s+)?(?:save|add|remember|set)\s+(?:contact\s+)?([a-zA-Z0-9_\s]+?)(?:\s+(?:as|number|phone|with|is|:)\s*|\s*:\s*|\s+)([0-9\+\-\s\(\)]{7,})$', t, re.I)
     if m:
-        name = m.group(1).strip()
+        name = clean_target_person(m.group(1))
         raw_phone = m.group(2).strip()
         return True, name, raw_phone
+
+    # 2. "<name> (phone)? number is <phone>"
+    m = re.search(r'^(?:contact\s+)?([a-zA-Z0-9_\s]+?)(?:\'s|s)?\s+(?:phone\s+)?number\s+is\s+([0-9\+\-\s\(\)]{7,})$', t, re.I)
+    if m:
+        name = clean_target_person(m.group(1))
+        raw_phone = m.group(2).strip()
+        return True, name, raw_phone
+
     return False, None, None
 
 
 def parse_whatsapp_intent(text: str):
     """
     Detects if the user wants to open WhatsApp or send a message to a person.
+    Handles phrases like:
+      - "open whatsapp send Hii message to My World contact"
+      - "open whatsapp and send hii message to a my world contact"
+      - "open whatsapp and search my world contact and send hi message"
+      - "open whatsapp and send a message to Rahul saying Hey"
+      - "send message to my world on whatsapp saying hi"
+      - "open whatsapp"
     Returns (is_whatsapp: bool, person: str | None, message: str | None)
     """
     if not text:
         return False, None, None
-    t = clean_command(text)
-    
-    sep = r'(?:\s+(?:saying|that|with|text|content|and message|and say|and text)\s+|\s*:\s*)'
-    
-    # 1. "open whatsapp and send a message to <person> saying/and message <msg>"
-    m = re.search(r'(?:open|launch|go to)\s+whatsapp\s+and\s+send\s+(?:a\s+)?message\s+to\s+([a-zA-Z0-9_\+\-\s]+?)' + sep + r'(.+)', t, re.I)
-    if m:
-        return True, m.group(1).strip(), m.group(2).strip()
+    t = clean_command(text).rstrip('.!?')
 
-    # 1b. "open whatsapp and send a message to <person>" (no message specified)
-    m = re.search(r'(?:open|launch|go to)\s+whatsapp\s+and\s+send\s+(?:a\s+)?message\s+to\s+([a-zA-Z0-9_\+\-\s]+)[!.?]*$', t, re.I)
-    if m:
-        return True, m.group(1).strip(), None
+    if not re.search(r'\b(?:whatsapp|wa)\b', t, re.I):
+        return False, None, None
 
-    # 2. "open whatsapp and message <person> <msg>"
-    m = re.search(r'(?:open|launch|go to)\s+whatsapp\s+and\s+message\s+([a-zA-Z0-9_\+\-\s]+?)(?:' + sep + r'|\s+)(.+)', t, re.I)
-    if m:
-        return True, m.group(1).strip(), m.group(2).strip()
+    # Strip prefix 'open/launch/go to whatsapp (and/then)?'
+    after_prefix = re.sub(r'^(?:can you\s+|please\s+)?(?:open|launch|go to)\s+whatsapp(?:\s+and|\s*,|\s+to|\s+then|\s+)?\s*', '', t, flags=re.I).strip()
 
-    # 3. "send a message to <person> on whatsapp saying <msg>"
-    m = re.search(r'send\s+(?:a\s+)?(?:whatsapp\s+)?message\s+to\s+([a-zA-Z0-9_\+\-\s]+?)(?:\s+on\s+whatsapp)?(?:' + sep + r'|\s+)(.+)', t, re.I)
-    if m:
-        return True, m.group(1).strip(), m.group(2).strip()
-
-    # 4. "whatsapp <person> <msg>" or "message <person> on whatsapp <msg>"
-    m = re.search(r'(?:whatsapp|message)\s+([a-zA-Z0-9_\+\-\s]+?)(?:\s+on\s+whatsapp)?(?:' + sep + r'|\s+)(.+)', t, re.I)
-    if m:
-        target = m.group(1).strip()
-        if target.lower() not in ('web', 'app'):
-            return True, target, m.group(2).strip()
-
-    # 5. Just "open whatsapp"
-    if re.fullmatch(r'(?:open|launch|go to)\s+whatsapp[!.?]*', t, re.I):
+    # If nothing follows "open whatsapp", user just wants to open the web app
+    if not after_prefix or re.search(r'^(?:web|app|application)?$', after_prefix, re.I):
         return True, None, None
 
-    return False, None, None
+    explicit_sep = r'(?:\s+(?:saying|that|with|texting|content|and message|and say|and text)\s+|\s*:\s*|\s*,\s*)'
+
+    # Pattern 0: Search and send
+    # e.g. "search my world contact and send hi message" or "search my world send hi"
+    m0 = re.match(r'^(?:can you\s+|please\s+)?search\s+(?:for\s+)?(.+?)(?:\s+(?:and|then|,)?\s*(?:it\s+should\s+)?send\s+(.+))$', after_prefix, re.I)
+    if m0:
+        target = clean_target_person(m0.group(1))
+        msg = clean_msg_text(m0.group(2))
+        return True, target, msg
+
+    # Pattern 1: "send (a)? (whatsapp)? message to <person> saying/with/that/: <msg>"
+    m1 = re.match(r'^(?:can you\s+|please\s+)?send\s+(?:a\s+)?(?:whatsapp\s+)?message\s+to\s+(.+?)' + explicit_sep + r'(.+)$', after_prefix, re.I)
+    if not m1:
+        m1 = re.match(r'^(?:can you\s+|please\s+)?send\s+(?:a\s+)?(?:whatsapp\s+)?message\s+to\s+(.+?)(?:\s+on\s+whatsapp)?' + explicit_sep + r'(.+)$', t, re.I)
+    if m1:
+        person = clean_target_person(m1.group(1))
+        msg = clean_msg_text(m1.group(2))
+        return True, person, msg
+
+    # Pattern 2: "send <msg> (message)? to <person> (contact)?"
+    # e.g. "send Hii message to My World contact" or "send hii to my world"
+    m2 = re.match(r'^(?:can you\s+|please\s+)?send\s+(?!(?:a\s+|the\s+)?(?:whatsapp\s+)?message\b)(.+?)(?:\s+message)?\s+to\s+(.+?)(?:\s+on\s+whatsapp)?$', after_prefix, re.I)
+    if not m2:
+        m2 = re.match(r'^(?:can you\s+|please\s+)?send\s+(?!(?:a\s+|the\s+)?(?:whatsapp\s+)?message\b)(.+?)(?:\s+message)?\s+to\s+(.+?)\s+on\s+whatsapp$', t, re.I)
+    if m2:
+        msg = clean_msg_text(m2.group(1))
+        person = clean_target_person(m2.group(2))
+        return True, person, msg
+
+    # Pattern 3: "send (a)? (whatsapp)? message to <person>" (no msg specified)
+    m3 = re.match(r'^(?:can you\s+|please\s+)?send\s+(?:a\s+)?(?:whatsapp\s+)?message\s+to\s+(.+?)(?:\s+on\s+whatsapp)?$', after_prefix, re.I)
+    if not m3:
+        m3 = re.match(r'^(?:can you\s+|please\s+)?send\s+(?:a\s+)?(?:whatsapp\s+)?message\s+to\s+(.+?)\s+on\s+whatsapp$', t, re.I)
+    if m3:
+        person = clean_target_person(m3.group(1))
+        return True, person, None
+
+    # Pattern 4: "message/text <person> saying/with <msg>"
+    m4 = re.match(r'^(?:message|text)\s+(.+?)' + explicit_sep + r'(.+)$', after_prefix, re.I)
+    if m4:
+        person = clean_target_person(m4.group(1))
+        msg = clean_msg_text(m4.group(2))
+        return True, person, msg
+
+    # Pattern 5: "whatsapp <person> saying/with <msg>"
+    m5 = re.match(r'^(?:can you\s+|please\s+)?whatsapp\s+(.+?)' + explicit_sep + r'(.+)$', t, re.I)
+    if m5:
+        person = clean_target_person(m5.group(1))
+        msg = clean_msg_text(m5.group(2))
+        return True, person, msg
+
+    # Pattern 6: Check against existing contacts
+    contacts = load_contacts()
+    if contacts:
+        c_pat = re.sub(r'^(?:text|message|to)\s+', '', after_prefix, flags=re.I).strip()
+        c_pat_clean = clean_target_person(c_pat)
+        for c_orig in sorted(contacts.keys(), key=lambda x: len(x), reverse=True):
+            if c_pat_clean.lower().startswith(c_orig.lower()):
+                rem = clean_msg_text(c_pat_clean[len(c_orig):].strip())
+                return True, c_orig, rem or None
+
+    # Pattern 7: "open whatsapp and text/message/search <person>" (no message)
+    m7 = re.match(r'^(?:message|text|to|search\s+for|search)\s+([a-zA-Z0-9_\+\-\s]+)$', after_prefix, re.I)
+    if m7:
+        person = clean_target_person(m7.group(1))
+        if person.lower() not in ('web', 'app'):
+            return True, person, None
+
+    return True, None, None
 
 
 def build_whatsapp_url(person: str | None, message: str | None):
@@ -735,10 +827,16 @@ def build_whatsapp_url(person: str | None, message: str | None):
             if len(p_clean) == 10 and p_clean[0] in '6789':
                 p_clean = '91' + p_clean
             found_phone = p_clean
+            display_name = f"+{found_phone}"
         else:
-            p_lower = person.lower().strip()
-            if p_lower in contacts:
-                found_phone = contacts[p_lower]
+            # Fuzzy and normalized lookup
+            p_norm = re.sub(r'[^a-z0-9]', '', person.lower())
+            for c_name, c_phone in contacts.items():
+                c_norm = re.sub(r'[^a-z0-9]', '', c_name.lower())
+                if p_norm == c_norm or (len(p_norm) >= 3 and (p_norm in c_norm or c_norm in p_norm)):
+                    found_phone = c_phone
+                    display_name = c_name.title()
+                    break
 
     query_params = []
     if found_phone:
@@ -783,6 +881,7 @@ def extract_expression_and_clean(text: str):
         expression = 'smile'
         
     # Strip tags for clean text display and speech
+    clean_text = re.sub(r'<\|.*$', '', clean_text, flags=re.DOTALL).strip()
     clean_text = re.sub(r'\[(smile|laugh|think|cyber|english|idle|surprised)\]\s*', '', clean_text, flags=re.I)
     return expression, clean_text, action_url
 
@@ -812,9 +911,218 @@ def parse_mode_switch_intent(text: str):
     return False, None
 
 
+LIA_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lia-frontend', 'dist')
+ACTIVE_VRM = "lia.vrm"
+CAPABILITIES_STATE = {"switches": {"pc_control": False, "cashclaw": False}}
+
+
+@app.get('/assets/<path:filename>')
+def serve_lia_assets(filename):
+    assets_dir = os.path.join(LIA_DIST, 'assets')
+    if os.path.exists(os.path.join(assets_dir, filename)):
+        return send_from_directory(assets_dir, filename)
+    return jsonify(error="Asset not found"), 404
+
+
+@app.get('/models/<path:filename>')
+def serve_vrm_model(filename):
+    dist_models = os.path.join(LIA_DIST, 'models')
+    if os.path.exists(os.path.join(dist_models, filename)):
+        return send_from_directory(dist_models, filename)
+    static_models = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'models')
+    if os.path.exists(os.path.join(static_models, filename)):
+        return send_from_directory(static_models, filename)
+    if os.path.exists(os.path.join(static_models, 'model.vrm')):
+        return send_from_directory(static_models, 'model.vrm')
+    return jsonify(error="Model not found"), 404
+
+
+@app.get('/animations/<path:filename>')
+def serve_animations(filename):
+    dist_anim = os.path.join(LIA_DIST, 'animations')
+    if os.path.exists(os.path.join(dist_anim, filename)):
+        return send_from_directory(dist_anim, filename)
+    static_anim = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'animations')
+    if os.path.exists(os.path.join(static_anim, filename)):
+        return send_from_directory(static_anim, filename)
+    return jsonify(error="Animation not found"), 404
+
+
+@app.get('/bg.jpg')
+def serve_bg_jpg():
+    bg_path = os.path.join(LIA_DIST, 'bg.jpg')
+    if os.path.exists(bg_path):
+        return send_file(bg_path, mimetype='image/jpeg')
+    return send_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'SakuraBg.jpg'), mimetype='image/jpeg')
+
+
+@app.get('/SakuraBg.jpg')
+def serve_sakura_bg():
+    bg_path = os.path.join(LIA_DIST, 'SakuraBg.jpg')
+    if os.path.exists(bg_path):
+        return send_file(bg_path, mimetype='image/jpeg')
+    return send_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'SakuraBg.jpg'), mimetype='image/jpeg')
+
+
+@app.get('/backgrounds/<path:filename>')
+def serve_background(filename):
+    for d in [LIA_DIST, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')]:
+        p = os.path.join(d, filename)
+        if os.path.exists(p):
+            return send_file(p)
+    return jsonify(error="Background not found"), 404
+
+
+# --- LIA Compatibility API Endpoints ---
+
+@app.get('/api/stats')
+def get_system_stats():
+    try:
+        import psutil
+        cpu = psutil.cpu_percent(interval=None)
+        ram = psutil.virtual_memory()
+        return jsonify({
+            "cpu_pct": int(cpu),
+            "ram_used_mb": int(ram.used / (1024 * 1024)),
+            "ram_total_mb": int(ram.total / (1024 * 1024)),
+            "vram_used_mb": 1280,
+            "vram_total_mb": 6144,
+            "gpu_pct": int(cpu * 0.7)
+        })
+    except Exception:
+        return jsonify({
+            "cpu_pct": 14,
+            "ram_used_mb": 4200,
+            "ram_total_mb": 16384,
+            "vram_used_mb": 1120,
+            "vram_total_mb": 6144,
+            "gpu_pct": 10
+        })
+
+
+@app.get('/api/vrm/list')
+def list_vrm_models():
+    return jsonify(models=["lia.vrm", "model.vrm", "nyann.vrm"])
+
+
+@app.route('/api/vrm/active', methods=['GET', 'POST'])
+def active_vrm():
+    global ACTIVE_VRM
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        if data.get('filename'):
+            ACTIVE_VRM = data['filename']
+        return jsonify(ok=True, filename=ACTIVE_VRM)
+    return jsonify(filename=ACTIVE_VRM)
+
+
+@app.get('/api/background/list')
+def list_backgrounds():
+    return jsonify(backgrounds=["bg.jpg", "SakuraBg.jpg"])
+
+
+@app.get('/api/capabilities')
+def get_capabilities():
+    return jsonify(CAPABILITIES_STATE)
+
+
+@app.post('/api/capabilities/switch')
+def switch_capability():
+    data = request.get_json(silent=True) or {}
+    name = data.get('name')
+    enabled = data.get('enabled')
+    if name and name in CAPABILITIES_STATE["switches"]:
+        CAPABILITIES_STATE["switches"][name] = bool(enabled)
+    return jsonify(CAPABILITIES_STATE)
+
+
+@app.get('/api/soul/status')
+def soul_status():
+    return jsonify({
+        "animation": {
+            "happy": 0.5,
+            "sad": 0.1,
+            "angry": 0.05,
+            "fear": 0.05,
+            "disgust": 0.03,
+            "surprised": 0.1,
+            "neutral": 0.4,
+            "relaxed": 0.3,
+            "love": 0.7,
+            "arousal": 0.2,
+            "devotion": 0.8
+        }
+    })
+
+
+@app.post('/api/obs_subtitle')
+def obs_subtitle():
+    return jsonify(ok=True)
+
+
+@app.get('/api/desktop/status')
+def desktop_status():
+    return jsonify(active=False)
+
+
+@app.get('/api/config')
+def api_config():
+    return jsonify(model=CURRENT_MODEL)
+
+
+@app.get('/api/tts/config')
+def tts_config():
+    return jsonify(engine="piper", voice="en_US-hfc_female-medium")
+
+
+@app.get('/api/audio_tts')
+def get_audio_tts():
+    text = request.args.get('text', '').strip()
+    if not text:
+        return jsonify(error="Text required"), 400
+    try:
+        res = tts_engine.synthesize_speech(text)
+        if res and res.get('audio_url'):
+            audio_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), res['audio_url'].lstrip('/'))
+            if os.path.exists(audio_path):
+                return send_file(audio_path, mimetype='audio/wav')
+    except Exception as e:
+        print(f"[TTS] audio_tts error: {e}")
+    return jsonify(error="TTS generation failed"), 500
+
+
 @app.get('/')
 def index():
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'index_3d.html')
+    if os.path.exists(template_path):
+        with open(template_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return render_template_string(content.replace('CURRENT_MODEL', CURRENT_MODEL))
     return render_template_string(PAGE_HTML.replace('CURRENT_MODEL', CURRENT_MODEL))
+
+
+@app.get('/2d')
+def index_2d():
+    return render_template_string(PAGE_HTML.replace('CURRENT_MODEL', CURRENT_MODEL))
+
+
+@app.get('/3d')
+def index_3d():
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'index_3d.html')
+    if os.path.exists(template_path):
+        with open(template_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return render_template_string(content.replace('CURRENT_MODEL', CURRENT_MODEL))
+    return render_template_string(PAGE_HTML.replace('CURRENT_MODEL', CURRENT_MODEL))
+
+
+@app.get('/react')
+def index_react():
+    dist_index = os.path.join(LIA_DIST, 'index.html')
+    if os.path.exists(dist_index):
+        with open(dist_index, 'r', encoding='utf-8') as f:
+            return f.read()
+    return jsonify(error="React build not found"), 404
 
 
 @app.get('/api/contacts')
@@ -1123,7 +1431,8 @@ def chat():
     is_save_c, c_name, c_phone = parse_save_contact_intent(last_user_msg)
     if is_save_c and c_name and c_phone:
         ok, cleaned_p = save_contact(c_name, c_phone)
-        ans = f"I've saved {c_name.capitalize()} (+{cleaned_p}) to your contacts, Nithin! Now you can ask me to send WhatsApp messages to them anytime. ❤️"
+        disp_name = c_name.title()
+        ans = f"I've saved {disp_name} (+{cleaned_p}) to your contacts, Nithin! Now you can ask me to send WhatsApp messages to them anytime. ❤️"
         return jsonify(
             answer=ans,
             raw_answer=f"[smile] {ans}",
@@ -1136,13 +1445,17 @@ def chat():
     if is_wa:
         wa_url, wa_phone, wa_display = build_whatsapp_url(wa_person, wa_msg)
         open_url_in_browser(wa_url)
+        disp_name = wa_display.title() if wa_display else (wa_person.title() if wa_person else None)
         if wa_person and wa_msg:
             if wa_phone:
-                ans = f"Opening WhatsApp to send your message to {wa_person.capitalize()}: \"{wa_msg}\" ❤️"
+                ans = f"Opening WhatsApp to send your message to {disp_name}: \"{wa_msg}\" ❤️"
             else:
-                ans = f"Opening WhatsApp with your message for {wa_person.capitalize()}! Say 'save contact {wa_person.capitalize()} [phone]' to direct-open next time! ❤️"
+                ans = f"Opening WhatsApp with your message for {disp_name}! I've copied '{disp_name}' to your clipboard — press Ctrl+V in WhatsApp to search, or save their phone number below for 1-click direct chats! ❤️"
         elif wa_person:
-            ans = f"Opening WhatsApp chat for {wa_person.capitalize()}! What would you like to send, Nithin? ❤️"
+            if wa_phone:
+                ans = f"Opening WhatsApp chat with {disp_name}, Nithin! ❤️"
+            else:
+                ans = f"Opening WhatsApp for {disp_name}! I've copied their name to your clipboard. ❤️"
         else:
             ans = "Opening WhatsApp Web for you, Nithin! ❤️"
 
@@ -1153,7 +1466,9 @@ def chat():
             model=req_model,
             url=wa_url,
             action='whatsapp',
-            contact=wa_person
+            contact=disp_name,
+            phone=wa_phone,
+            message=wa_msg
         )
 
     # 3. Detect YouTube playback or search intent (Instant response — zero delay)
@@ -1206,7 +1521,11 @@ def chat():
         'num_ctx': 1024,
         'num_predict': 45,
         'num_thread': 4,
-        'stop': ['\n\n\n', 'Nithin:', 'User:', 'Assistant:']
+        'stop': [
+            '\n\n\n', 'Nithin:', 'User:', 'Assistant:',
+            '<|eot_id|>', '<|start_header_id|>', '<|end_header_id|>',
+            '<|im_end|>', '<|im_start|>', '<|endoftext|>', '<|end|>'
+        ]
     }
 
     if want_stream:
@@ -1238,6 +1557,8 @@ def chat():
                     done = chunk.get('done', False)
 
                     if token:
+                        if '<|' in token:
+                            break
                         full_content.append(token)
                         payload = {'token': token, 'done': False}
                         yield f"data: {json.dumps(payload)}\n\n"
@@ -1246,6 +1567,7 @@ def chat():
                         break
 
                 raw_ans = "".join(full_content).strip()
+                raw_ans = re.sub(r'<\|.*$', '', raw_ans, flags=re.DOTALL).strip()
 
                 # Ensure English Coach correction is present if error was detected
                 if mode == 'english' and ec_analysis.get('has_error'):
@@ -1302,6 +1624,7 @@ def chat():
         )
         r.raise_for_status()
         raw_ans = r.json().get('message', {}).get('content', '').strip()
+        raw_ans = re.sub(r'<\|.*$', '', raw_ans, flags=re.DOTALL).strip()
         if not raw_ans:
             return jsonify(error='Ollama returned an empty response.'), 502
 

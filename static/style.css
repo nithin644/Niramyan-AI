@@ -2,7 +2,7 @@
 
 :root {
   --bg: #090d18;
-  --panel-bg: linear-gradient(155deg, #131c31, #0b111e);
+  --panel-bg: linear-gradient(155deg, rgba(19, 28, 49, 0.82), rgba(11, 17, 30, 0.88));
   --line: #24324f;
   --line-light: #34466d;
   --text: #edf3ff;
@@ -23,9 +23,11 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(ellipse at 15% 0%, #17244a, transparent 45%),
-              radial-gradient(ellipse at 85% 100%, #15223c, transparent 40%),
-              #080c16;
+  background-image: url('/static/images/bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
   overflow-x: hidden;
@@ -139,6 +141,8 @@ main {
   border: 1px solid var(--line);
   border-radius: 24px;
   background: var(--panel-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   box-shadow: 0 20px 60px #00000040;
   overflow: hidden;
 }
@@ -1166,24 +1170,38 @@ footer {
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-  padding: 6px 14px;
-  background: rgba(255, 68, 68, 0.15);
+  padding: 7px 16px;
+  background: rgba(255, 68, 68, 0.16);
   color: #ff8585;
-  border: 1px solid rgba(255, 68, 68, 0.4);
-  border-radius: 8px;
+  border: 1px solid rgba(255, 68, 68, 0.45);
+  border-radius: 9px;
   text-decoration: none;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
-  transition: all 0.2s ease;
+  transition: all 0.22s ease;
   width: fit-content;
 }
 
 .yt-link-btn:hover {
-  background: rgba(255, 68, 68, 0.3);
+  background: rgba(255, 68, 68, 0.35);
   color: #fff;
   border-color: #ff4444;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 68, 68, 0.2);
+  box-shadow: 0 4px 14px rgba(255, 68, 68, 0.35);
+}
+
+.yt-link-btn.needs-click {
+  background: linear-gradient(135deg, rgba(255, 40, 40, 0.3), rgba(220, 20, 60, 0.45));
+  color: #ffffff;
+  border-color: #ff4d4d;
+  animation: ytGlowPulse 1.8s infinite ease-in-out;
+  cursor: pointer;
+}
+
+.yt-link-btn.opened {
+  background: rgba(30, 215, 96, 0.15);
+  border-color: rgba(30, 215, 96, 0.4);
+  color: #69f0ae;
 }
 
 .wa-link-btn {
@@ -1191,24 +1209,228 @@ footer {
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-  padding: 6px 14px;
-  background: rgba(37, 211, 102, 0.15);
+  padding: 7px 16px;
+  background: rgba(37, 211, 102, 0.16);
   color: #25d366;
-  border: 1px solid rgba(37, 211, 102, 0.4);
-  border-radius: 8px;
+  border: 1px solid rgba(37, 211, 102, 0.45);
+  border-radius: 9px;
   text-decoration: none;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
-  transition: all 0.2s ease;
+  transition: all 0.22s ease;
   width: fit-content;
 }
 
 .wa-link-btn:hover {
-  background: rgba(37, 211, 102, 0.3);
+  background: rgba(37, 211, 102, 0.35);
   color: #fff;
   border-color: #25d366;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.2);
+  box-shadow: 0 4px 14px rgba(37, 211, 102, 0.35);
+}
+
+.wa-link-btn.needs-click {
+  background: linear-gradient(135deg, rgba(37, 211, 102, 0.3), rgba(18, 140, 126, 0.45));
+  color: #ffffff;
+  border-color: #25d366;
+  animation: waGlowPulse 1.8s infinite ease-in-out;
+  cursor: pointer;
+}
+
+.wa-link-btn.opened {
+  background: rgba(30, 215, 96, 0.15);
+  border-color: rgba(30, 215, 96, 0.4);
+  color: #69f0ae;
+}
+
+/* Quick Save Contact Card (WhatsApp) */
+.quick-contact-card {
+  margin-top: 10px;
+  padding: 11px 14px;
+  background: rgba(37, 211, 102, 0.08);
+  border: 1px solid rgba(37, 211, 102, 0.28);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fadeIn 0.25s ease-out;
+}
+
+.qcc-header {
+  font-size: 0.82rem;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qcc-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.qcc-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 7px 11px;
+  font-size: 0.84rem;
+  color: #fff;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.qcc-input:focus {
+  border-color: #25d366;
+  box-shadow: 0 0 10px rgba(37, 211, 102, 0.35);
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.qcc-save-btn {
+  background: linear-gradient(135deg, #25d366, #128c7e);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(37, 211, 102, 0.25);
+}
+
+.qcc-save-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(37, 211, 102, 0.45);
+}
+
+.qcc-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.qcc-hint {
+  font-size: 0.74rem;
+  color: #a7f3d0;
+  line-height: 1.35;
+}
+
+.qcc-saved {
+  font-size: 0.84rem;
+  color: #6ee7b7;
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+@keyframes ytGlowPulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.65); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
+}
+
+@keyframes waGlowPulse {
+  0% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.65); }
+  70% { box-shadow: 0 0 0 10px rgba(37, 211, 102, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); }
+}
+
+/* Floating Auto-Open Toast */
+.auto-open-toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  background: rgba(18, 22, 38, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  color: #ffffff;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 68, 68, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.auto-open-toast.visible,
+.auto-open-toast:not(:empty) {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.auto-open-toast.wa {
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 20px rgba(37, 211, 102, 0.25);
+}
+
+.auto-open-toast .toast-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.auto-open-toast .toast-title {
+  color: #f0f4fc;
+}
+
+.auto-open-toast .toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auto-open-toast .toast-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  background: #ff3344;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  border-radius: 7px;
+  text-decoration: none;
+  transition: background 0.18s ease;
+}
+
+.auto-open-toast.wa .toast-btn {
+  background: #25d366;
+}
+
+.auto-open-toast .toast-btn:hover {
+  background: #ff5566;
+  color: #fff;
+}
+
+.auto-open-toast.wa .toast-btn:hover {
+  background: #2fe472;
+}
+
+.auto-open-toast .toast-close {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.auto-open-toast .toast-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .contacts-section {
