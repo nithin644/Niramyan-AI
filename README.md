@@ -322,26 +322,6 @@ Store names and phone numbers for instant message dispatching:
 
 ---
 
-## 📸 Visual Interface Gallery
-
-<div align="center">
-  <table>
-    <tr>
-      <td width="50%" align="center">
-        <b>Interactive 3D Anime Avatar (Three.js WebGL)</b><br/><br/>
-        <img src="assets/avatar_3d.jpg" alt="3D Anime Avatar" width="100%" style="border-radius: 8px;" /><br/>
-        <i>Real-time MToon cel-shading, gaze tracking, and lip-sync.</i>
-      </td>
-      <td width="50%" align="center">
-        <b>Modern Glassmorphic Chat Interface</b><br/><br/>
-        <img src="assets/chat_ui.jpg" alt="Chat UI" width="100%" style="border-radius: 8px;" /><br/>
-        <i>Streaming SSE responses, mode chips, and YouTube media controls.</i>
-      </td>
-    </tr>
-  </table>
-</div>
-
----
 
 ## 🔒 Privacy & Offline Guarantees
 
