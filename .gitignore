@@ -19,3 +19,6 @@ voices/
 .DS_Store
 static/audio_cache/
 *.dist-info/
+node_modules/
+dist/
+.vite/

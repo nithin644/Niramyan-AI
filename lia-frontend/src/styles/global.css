@@ -1,0 +1,34 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0a12;
+  --surface: rgba(255,255,255,0.04);
+  --surface-hover: rgba(255,255,255,0.08);
+  --border: rgba(255,255,255,0.08);
+  --accent: #c084fc;
+  --accent2: #f0abfc;
+  --text: #f1f0ff;
+  --text-muted: rgba(241,240,255,0.5);
+  --glow: 0 0 20px rgba(192,132,252,0.3);
+  --radius: 16px;
+}
+
+html, body, #root {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+html:has(.stream-mode),
+body:has(.stream-mode),
+body:has(.stream-mode) #root {
+  background: transparent;
+}
+
+canvas { display: block; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
