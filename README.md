@@ -23,9 +23,10 @@
 ## 🎥 Demo Video
 
 <p align="center">
-  <a href="assets/WhatsApp Video 2026-11-18 at 1.32.23 PM.mp4">
-    <img src="assets/WhatsApp Video 2026-11-18 at 1.32.23 PM.mp4" alt="Watch Niramyan-AI Demo Video" width="90%" style="border-radius: 12px; border: 2px solid #ff69b4; box-shadow: 0 8px 30px rgba(255,105,180,0.3);" />
-  </a>
+  <video width="90%" controls autoplay muted loop playsinline style="border-radius: 12px; border: 2px solid #ff69b4;">
+    <source src="assets/WhatsApp%20Video%202026-11-18%20at%201.32.23%20PM.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
 </p>
 
 <p align="center">
