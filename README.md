@@ -22,21 +22,9 @@
 
 ## 🎥 Demo Video
 
-<p align="center">
-  <video width="90%" controls autoplay muted loop playsinline
-    style="border-radius: 12px; border: 2px solid #ff69b4;">
-    <source src="https://github.com/user-attachments/assets/7f2b351c-d7f5-4ec8-8d17-4bf0f1020024" type="video/mp4">
-  </video>
-</p>
+https://github.com/user-attachments/assets/7f2b351c-d7f5-4ec8-8d17-4bf0f1020024
 
-<p align="center">
-  <a href="https://github.com/user-attachments/assets/7f2b351c-d7f5-4ec8-8d17-4bf0f1020024">
-    <img src="https://img.shields.io/badge/▶_Watch_Demo_Video-Click_Here-E62117?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch Demo">
-  </a>
-</p>
-
-> 💡 **Demo Walkthrough**: Experience zero-latency voice interaction, English grammar mentoring, automated Kali Linux tool launching, instant YouTube music playback, and 3D WebGL anime avatar lip-sync in action.  
-> *(To link your uploaded walkthrough video, add your MP4 to the GitHub release or place it in `docs/demo.mp4`)*.
+> 💡 **Demo Walkthrough**: Experience zero-latency voice interaction, English grammar mentoring, automated Kali Linux tool launching, instant YouTube music playback, and 3D WebGL anime avatar lip-sync in action.
 
 ---
 
