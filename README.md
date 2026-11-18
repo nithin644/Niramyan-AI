@@ -23,7 +23,7 @@
 ## 🎥 Demo Video
 
 <p align="center">
-  <a href="https://github.com/nithin644/Niramyan-AI#demo-video">
+  <a href="assets/WhatsApp Video 2026-11-18 at 1.32.23 PM.mp4">
     <img src="assets/WhatsApp Video 2026-11-18 at 1.32.23 PM.mp4" alt="Watch Niramyan-AI Demo Video" width="90%" style="border-radius: 12px; border: 2px solid #ff69b4; box-shadow: 0 8px 30px rgba(255,105,180,0.3);" />
   </a>
 </p>
