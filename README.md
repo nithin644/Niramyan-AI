@@ -23,15 +23,15 @@
 ## 🎥 Demo Video
 
 <p align="center">
-  <video width="90%" controls autoplay muted loop playsinline style="border-radius: 12px; border: 2px solid #ff69b4;">
-    <source src="assets/WhatsApp%20Video%202026-11-18%20at%201.32.23%20PM.mp4" type="video/mp4">
-    Your browser does not support the video tag.
+  <video width="90%" controls autoplay muted loop playsinline
+    style="border-radius: 12px; border: 2px solid #ff69b4;">
+    <source src="https://github.com/user-attachments/assets/7f2b351c-d7f5-4ec8-8d17-4bf0f1020024" type="video/mp4">
   </video>
 </p>
 
 <p align="center">
-  <a href="https://github.com/nithin644/Niramyan-AI/releases">
-    <img src="https://img.shields.io/badge/▶_Watch_Demo_Video-Click_Here-E62117?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch Demo" />
+  <a href="https://github.com/user-attachments/assets/7f2b351c-d7f5-4ec8-8d17-4bf0f1020024">
+    <img src="https://img.shields.io/badge/▶_Watch_Demo_Video-Click_Here-E62117?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch Demo">
   </a>
 </p>
 
